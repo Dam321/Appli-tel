@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Icon } from './icons';
 
 export type Tone = 'good' | 'warning' | 'serious' | 'critical' | 'accent' | 'neutral';
@@ -221,4 +221,29 @@ export async function shareOrCopy(text: string, title: string, toast: (m: string
   } catch {
     toast('Impossible de copier');
   }
+}
+
+/** Bouton à double appui : le 1er arme la confirmation (3 s), le 2e exécute. */
+export function ConfirmButton({ onConfirm, label, confirmLabel = 'Confirmer ?', className = 'icon-btn', children }: { onConfirm: () => void; label: string; confirmLabel?: string; className?: string; children: ReactNode }) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const id = window.setTimeout(() => setArmed(false), 3000);
+    return () => window.clearTimeout(id);
+  }, [armed]);
+  return (
+    <button
+      type="button"
+      className={armed ? 'btn sm danger' : className}
+      aria-label={armed ? confirmLabel : label}
+      onClick={() => {
+        if (armed) {
+          setArmed(false);
+          onConfirm();
+        } else setArmed(true);
+      }}
+    >
+      {armed ? confirmLabel : children}
+    </button>
+  );
 }

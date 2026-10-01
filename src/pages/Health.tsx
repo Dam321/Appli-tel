@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { navigate } from '../App';
 import { Icon } from '../components/icons';
-import { Badge, Callout, Card, Evidence, Field, NumberInput, Segmented, Sheet, shareOrCopy, type Tone } from '../components/ui';
+import { Badge, Callout, Card, ConfirmButton, Evidence, Field, NumberInput, Segmented, Sheet, shareOrCopy, type Tone } from '../components/ui';
 import { CATEGORIES, derivedMetrics, formatRange, markerStatus, MARKERS, prescriptionText, STATUS_LABEL, type Marker, type MarkerStatus } from '../lib/blood';
 import { latestValues } from '../lib/bodyComp';
 import { cooperVo2, longevityProtocol, vo2Category } from '../lib/longevity';
@@ -194,9 +194,9 @@ function Blood() {
                   <div className="title">{formatDay(p.date, { day: 'numeric', month: 'long', year: 'numeric' })}</div>
                   <div className="sub">{Object.keys(p.values).length} marqueurs</div>
                 </div>
-                <button className="icon-btn" aria-label="Supprimer" onClick={() => confirm('Supprimer cette prise de sang ?') && update((s) => ({ ...s, bloodPanels: s.bloodPanels.filter((x) => x.id !== p.id) }))}>
+                <ConfirmButton label="Supprimer la prise de sang" confirmLabel="Supprimer ?" onConfirm={() => update((s) => ({ ...s, bloodPanels: s.bloodPanels.filter((x) => x.id !== p.id) }))}>
                   <Icon.trash />
-                </button>
+                </ConfirmButton>
               </div>
             ))}
         </Card>

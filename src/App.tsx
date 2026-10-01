@@ -6,6 +6,7 @@ import { daysBetween, mondayOf, nextSeed, todayISO } from './lib/util';
 import { requestPersistence } from './lib/storage';
 import { useStore } from './store';
 import { useWithingsSync } from './withingsSync';
+import { IS_ARTIFACT } from './env';
 import { Onboarding } from './pages/Onboarding';
 import { Today } from './pages/Today';
 import { Body } from './pages/Body';
@@ -110,7 +111,7 @@ export function App() {
   // Synchro Withings automatique à l'ouverture (si > 1 h)
   useEffect(() => {
     const w = state.settings.withings;
-    if (!w?.refreshToken) return;
+    if (IS_ARTIFACT || !w?.refreshToken) return;
     if (w.lastSync && Date.now() - new Date(w.lastSync).getTime() < 3600_000) return;
     void sync(true);
   }, [state.settings.withings?.refreshToken]);

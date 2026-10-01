@@ -10,6 +10,7 @@ import { sessionForDate } from '../lib/training';
 import type { AppState, DailyLog } from '../lib/types';
 import { daysBetween, fmt, formatDay, todayISO, weekdayIndex } from '../lib/util';
 import { useApp } from '../store';
+import { IS_ARTIFACT } from '../env';
 
 export function setDaily(update: (fn: (s: AppState) => AppState) => void, day: string, fn: (d: DailyLog) => DailyLog) {
   update((s) => ({ ...s, daily: { ...s.daily, [day]: fn(s.daily[day] ?? { habits: {}, meals: {} }) } }));
@@ -67,7 +68,7 @@ export function Today() {
         </div>
       </div>
 
-      {!state.settings.withings?.refreshToken && (
+      {!IS_ARTIFACT && !state.settings.withings?.refreshToken && (
         <Callout title="Connecte ta balance Withings" action={<button className="btn sm primary" onClick={() => navigate('settings')}>Connecter</button>}>
           Tes pesées et ta composition corporelle arriveront automatiquement, et ton plan s’ajustera tout seul.
         </Callout>

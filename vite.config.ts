@@ -4,11 +4,16 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // `base: './'` : chemins relatifs, l'app fonctionne quel que soit le sous-dossier
 // (GitHub Pages : https://<utilisateur>.github.io/<dépôt>/).
+// ARTIFACT=1 : build « aperçu » sans service worker (page claude.ai), dans dist-artifact/.
+const artifact = process.env.VITE_ARTIFACT === '1';
+
 export default defineConfig({
   base: './',
+  build: { outDir: artifact ? 'dist-artifact' : 'dist' },
   plugins: [
     react(),
     VitePWA({
+      disable: artifact,
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {

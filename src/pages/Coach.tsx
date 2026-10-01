@@ -5,6 +5,7 @@ import { Callout } from '../components/ui';
 import { askCoach, CoachError } from '../lib/coach';
 import { coachSummary } from '../lib/derived';
 import { useApp } from '../store';
+import { INSTALLED_APP_URL, IS_ARTIFACT } from '../env';
 
 const SUGGESTIONS = [
   'Analyse ma semaine et dis-moi les 3 priorités',
@@ -26,6 +27,13 @@ export function Coach() {
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [state.coach.length, streaming, pending]);
+
+  if (IS_ARTIFACT)
+    return (
+      <Callout title="Coach IA disponible dans l’app installée">
+        Le coach (Claude) a besoin d’un accès réseau que cette page d’aperçu n’a pas. Installe l’app depuis {INSTALLED_APP_URL} puis ajoute ta clé API dans Réglages.
+      </Callout>
+    );
 
   if (!state.settings.anthropicKey)
     return (

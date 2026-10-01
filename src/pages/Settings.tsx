@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import { Icon } from '../components/icons';
-import { Badge, Callout, Card, Field, Segmented } from '../components/ui';
+import { Badge, Callout, Card, ConfirmButton, Field, Segmented } from '../components/ui';
 import { defaultState, exportState, importState } from '../lib/storage';
 import type { Profile } from '../lib/types';
 import { todayISO } from '../lib/util';
 import { authorizeUrl, redirectUri } from '../lib/withings';
 import { useApp } from '../store';
 import { useWithingsSync } from '../withingsSync';
+import { INSTALLED_APP_URL, IS_ARTIFACT } from '../env';
 import { FoodStep, GoalStep, IdentityStep, RecoveryStep, TrainingStep } from './ProfileForm';
 
 function Section({ title, children, open }: { title: string; children: ReactNode; open?: boolean }) {
@@ -102,7 +103,11 @@ export function Settings({ oauthError }: { oauthError: string | null }) {
         sub={w?.refreshToken ? 'Connectée' : 'Synchronise automatiquement poids, % de gras, masse musculaire, pas…'}
         action={w?.refreshToken ? <Badge tone="good">Connectée</Badge> : <Badge>Non connectée</Badge>}
       >
-        {w?.refreshToken ? (
+        {IS_ARTIFACT ? (
+          <p className="small text-2" style={{ margin: 0 }}>
+            La synchronisation Withings fonctionne dans l’app installée sur ton téléphone ({INSTALLED_APP_URL}). Ici, importe ton fichier <span className="kbd">weight.csv</span> depuis l’onglet Corps.
+          </p>
+        ) : w?.refreshToken ? (
           <div className="row wrap">
             <button className="btn sm primary" disabled={busy} onClick={() => sync(false)}>
               <Icon.refresh /> {busy ? 'Synchro…' : 'Synchroniser maintenant'}
@@ -156,6 +161,7 @@ export function Settings({ oauthError }: { oauthError: string | null }) {
         )}
       </Card>
 
+      {!IS_ARTIFACT && (
       <Card title="Coach IA (Claude)" sub="Pose toutes tes questions, il connaît toutes tes données" action={state.settings.anthropicKey ? <Badge tone="good">Activé</Badge> : <Badge>Optionnel</Badge>}>
         <Field label="Clé API Anthropic" hint={<>Crée-la sur <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a> (facturé à l’usage, quelques centimes par question). Stockée uniquement sur ce téléphone.</>}>
           <input className="input" type="password" placeholder="sk-ant-…" value={apiKey} onChange={(e) => setApiKey(e.target.value)} autoComplete="off" />
@@ -171,6 +177,7 @@ export function Settings({ oauthError }: { oauthError: string | null }) {
           Enregistrer
         </button>
       </Card>
+      )}
 
       <div className="section-title">Mon profil</div>
       <Section title="Identité & mensurations">
@@ -202,7 +209,10 @@ export function Settings({ oauthError }: { oauthError: string | null }) {
         />
       </Card>
 
-      <Card title="Mes données" sub="Tout est stocké sur ce téléphone. Fais une sauvegarde de temps en temps.">
+      <Card
+        title="Mes données"
+        sub={IS_ARTIFACT ? 'Version aperçu : les données restent dans ce navigateur. L’export de fichier fonctionne dans l’app installée.' : 'Tout est stocké sur ce téléphone. Fais une sauvegarde de temps en temps.'}
+      >
         <div className="row wrap">
           <button className="btn sm" onClick={doExport}>
             <Icon.download /> Exporter
@@ -211,14 +221,9 @@ export function Settings({ oauthError }: { oauthError: string | null }) {
             <Icon.upload /> Importer
             <input type="file" accept="application/json,.json" hidden onChange={(e) => e.target.files?.[0] && doImport(e.target.files[0])} />
           </label>
-          <button
-            className="btn sm danger"
-            onClick={() => {
-              if (confirm('Effacer TOUTES les données de l’app ? (irréversible)')) update(() => defaultState());
-            }}
-          >
+          <ConfirmButton className="btn sm danger" label="Tout effacer" confirmLabel="Effacer définitivement ?" onConfirm={() => update(() => defaultState())}>
             <Icon.trash /> Tout effacer
-          </button>
+          </ConfirmButton>
         </div>
         <details style={{ marginTop: 12 }}>
           <summary className="disclosure small" style={{ fontWeight: 600 }}>

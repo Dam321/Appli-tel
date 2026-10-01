@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { navigate } from '../App';
 import { Icon } from '../components/icons';
-import { Badge, Card, Field, NumberInput, Segmented, Sheet } from '../components/ui';
+import { Badge, Card, ConfirmButton, Field, NumberInput, Segmented, Sheet } from '../components/ui';
 import { EXERCISE_BY_ID } from '../data/exercises';
 import { exerciseHistory, lastPerformance, setsText, suggestNext, type ProgramExercise, type ProgramSession } from '../lib/training';
 import type { WorkoutLog } from '../lib/types';
@@ -433,9 +433,9 @@ function History() {
                       {formatDay(w.date, { weekday: 'short', day: 'numeric', month: 'short' })} · {nSets} séries · {Math.round(tonnage).toLocaleString('fr-FR')} kg soulevés · sem. {w.week}
                     </div>
                   </div>
-                  <button className="icon-btn" aria-label="Supprimer" onClick={() => confirm('Supprimer cette séance ?') && update((s) => ({ ...s, workouts: s.workouts.filter((x) => x.id !== w.id) }))}>
+                  <ConfirmButton label="Supprimer la séance" confirmLabel="Supprimer ?" onConfirm={() => update((s) => ({ ...s, workouts: s.workouts.filter((x) => x.id !== w.id) }))}>
                     <Icon.trash />
-                  </button>
+                  </ConfirmButton>
                 </div>
               );
             })}
