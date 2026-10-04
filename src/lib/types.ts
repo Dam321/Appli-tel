@@ -35,6 +35,8 @@ export type MusclePriority = 'chest' | 'back' | 'shoulders' | 'arms' | 'glutes' 
 export type CardioMode = 'bike' | 'run' | 'row' | 'swim' | 'walk' | 'elliptical';
 export type TrainingTime = 'morning' | 'noon' | 'evening';
 export type Budget = 'eco' | 'standard' | 'premium';
+export type SkinType = 'normal' | 'oily' | 'combination' | 'dry' | 'sensitive';
+export type SkinConcern = 'aging' | 'pigmentation' | 'acne' | 'redness' | 'pores' | 'dark_circles';
 
 export interface Profile {
   name: string;
@@ -81,6 +83,9 @@ export interface Profile {
   budget: Budget;
   /** Temps de cuisine max en semaine (min) */
   maxCookMinutes: number;
+  skinType: SkinType;
+  skinConcerns: SkinConcern[];
+  hairLoss: boolean;
   /** Version du questionnaire rempli (2 = bilan complet) */
   profileVersion: number;
   createdAt: string;
@@ -240,4 +245,16 @@ export interface AppState {
   coach: CoachMessage[];
   /** Métadonnées des photos (les images sont dans IndexedDB) */
   photos: ProgressPhoto[];
+  /** Dernière analyse IA de la silhouette */
+  physiqueAnalysis?: { date: string; result: PhysiqueAnalysis };
+}
+
+export interface PhysiqueAnalysis {
+  estimatedBodyFat: string;
+  overall: string;
+  strengths: string[];
+  weakPoints: string[];
+  posture: string[];
+  suggestedPriorities: MusclePriority[];
+  actions: string[];
 }

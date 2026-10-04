@@ -15,8 +15,9 @@ import { Nutrition } from './pages/Nutrition';
 import { Health } from './pages/Health';
 import { Settings } from './pages/Settings';
 import { Coach } from './pages/Coach';
+import { Score } from './pages/Score';
 
-export type Route = 'home' | 'body' | 'training' | 'nutrition' | 'health' | 'settings' | 'coach';
+export type Route = 'home' | 'body' | 'training' | 'nutrition' | 'health' | 'settings' | 'coach' | 'score';
 
 const TITLES: Record<Route, string> = {
   home: 'Aujourd’hui',
@@ -26,6 +27,7 @@ const TITLES: Record<Route, string> = {
   health: 'Santé & longévité',
   settings: 'Réglages',
   coach: 'Coach IA',
+  score: 'Bilan 360°',
 };
 
 function parseHash(): { route: Route; tab?: string } {
@@ -133,6 +135,7 @@ export function App() {
     health: <Health tab={loc.tab} />,
     settings: <Settings oauthError={oauthError} />,
     coach: <Coach />,
+    score: <Score />,
   };
 
   const nav: { route: Route; label: string; icon: ReactNode }[] = [
@@ -142,7 +145,7 @@ export function App() {
     { route: 'nutrition', label: 'Nutrition', icon: <Icon.food /> },
     { route: 'health', label: 'Santé', icon: <Icon.heart /> },
   ];
-  const sub = loc.route === 'settings' || loc.route === 'coach';
+  const sub = loc.route === 'settings' || loc.route === 'coach' || loc.route === 'score';
 
   return (
     <div className="app">

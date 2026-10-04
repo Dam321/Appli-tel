@@ -7,8 +7,10 @@ import { coachSummary } from '../lib/derived';
 import { useApp } from '../store';
 import { INSTALLED_APP_URL, IS_ARTIFACT } from '../env';
 
+const WEEKLY_REPORT =
+  'Fais mon rapport complet de la semaine : analyse toutes mes données (poids et composition, séances et progression, forme du matin, sommeil, nutrition, prise de sang, âge biologique), dis-moi ce qui va bien, ce qui coince et pourquoi, puis donne-moi mes 3 actions prioritaires pour la semaine prochaine, chiffrées et concrètes.';
+
 const SUGGESTIONS = [
-  'Analyse ma semaine et dis-moi les 3 priorités',
   'Que manger avant et après ma séance ?',
   'Mes résultats sanguins sont-ils bons ?',
   'Je stagne au développé couché, que faire ?',
@@ -82,6 +84,9 @@ export function Coach() {
         {state.coach.length === 0 && !pending && (
           <div className="stack">
             <div className="bubble assistant">Salut ! Je connais ton profil, tes mesures, ton programme et ton menu. Pose-moi n’importe quelle question.</div>
+            <button className="btn primary block" onClick={() => send(WEEKLY_REPORT)}>
+              <Icon.sparkles /> Mon rapport complet de la semaine
+            </button>
             <div className="chips">
               {SUGGESTIONS.map((s) => (
                 <button key={s} className="chip" onClick={() => send(s)}>

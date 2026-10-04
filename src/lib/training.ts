@@ -127,7 +127,12 @@ export function programWeek(programStart: string, today = todayISO()): { week: n
   return { week: (Math.floor(d / 7) % 5) + 1, cycle: Math.floor(d / 35) + 1 };
 }
 
-export function buildProgram(profile: Profile, programStart: string, variant = 0, today = todayISO(), restingHr?: number): Program {
+export interface ProgramOptions {
+  /** Ajustement de séries par muscle, appris des performances (voir autoVolume) */
+  volumeAdjust?: Partial<Record<Muscle, number>>;
+}
+
+export function buildProgram(profile: Profile, programStart: string, variant = 0, today = todayISO(), restingHr?: number, opts: ProgramOptions = {}): Program {
   const days = Math.min(6, Math.max(2, profile.trainingDays));
   const split = SPLITS[days];
   const preferred = [...new Set(profile.trainingWeekdays ?? [])].filter((d) => d >= 0 && d <= 6).sort((a, b) => a - b);
@@ -207,6 +212,16 @@ export function buildProgram(profile: Profile, programStart: string, variant = 0
       }
     }
     for (const e of exercises) if (EXERCISE_BY_ID[e.exerciseId].primary.some((m) => priorityMuscles.has(m))) e.priority = true;
+    // Auto-régulation : +1 série sur le 1er exercice de chaque muscle qui stagne
+    if (opts.volumeAdjust && !deload) {
+      const done = new Set<Muscle>();
+      for (const e of exercises) {
+        const m = EXERCISE_BY_ID[e.exerciseId].primary.find((x) => opts.volumeAdjust![x] && !done.has(x));
+        if (!m) continue;
+        done.add(m);
+        e.sets = Math.max(2, Math.min(5, e.sets + opts.volumeAdjust[m]!));
+      }
+    }
     fitToDuration(exercises, profile.sessionMinutes);
     return { id: `${key}-${sIdx}`, name: tpl.name, focus: tpl.focus, exercises, estMinutes: estimateMinutes(exercises) };
   });
@@ -519,4 +534,40 @@ export function exerciseHistory(workouts: WorkoutLog[], exerciseId: string): { d
       const best = sets.reduce((acc, s) => (e1rm(s.weight, s.reps, s.rir) > e1rm(acc.weight, acc.reps, acc.rir) ? s : acc), sets[0]);
       return { date: w.date, e1rm: Math.round(e1rm(best.weight, best.reps, best.rir) * 10) / 10, best: `${best.weight} kg × ${best.reps}` };
     });
+}
+
+export interface AutoVolume {
+  adjust: Partial<Record<Muscle, number>>;
+  notes: string[];
+}
+
+/**
+ * Programme qui apprend : sur les 5 dernières semaines, un muscle dont les exercices
+ * ne progressent plus (malgré une bonne récupération) reçoit une série de plus par
+ * séance. Si la forme moyenne est basse, on n'ajoute rien (la fatigue est le frein).
+ */
+export function autoVolume(workouts: WorkoutLog[], today: string, readinessAvg?: number): AutoVolume {
+  const recent = workouts.filter((w) => daysBetween(w.date, today) <= 35);
+  const ids = [...new Set(recent.flatMap((w) => w.entries.map((e) => e.exerciseId)))];
+  const byMuscle = new Map<Muscle, number[]>();
+  for (const id of ids) {
+    const h = exerciseHistory(recent, id);
+    if (h.length < 3) continue;
+    const change = (h[h.length - 1].e1rm - h[0].e1rm) / Math.max(h[0].e1rm, 1);
+    for (const m of EXERCISE_BY_ID[id]?.primary ?? []) byMuscle.set(m, [...(byMuscle.get(m) ?? []), change]);
+  }
+  const adjust: Partial<Record<Muscle, number>> = {};
+  const notes: string[] = [];
+  if (readinessAvg !== undefined && readinessAvg < 45) {
+    if (byMuscle.size) notes.push('Ta forme moyenne est basse : pas de volume en plus tant que la récupération ne remonte pas (sommeil, stress, calories).');
+    return { adjust, notes };
+  }
+  for (const [m, changes] of byMuscle) {
+    const mean = changes.reduce((a, b) => a + b, 0) / changes.length;
+    if (mean < 0.005) {
+      adjust[m] = 1;
+      notes.push(`${MUSCLE_LABEL[m]} : stagnation sur 5 semaines → +1 série par séance.`);
+    }
+  }
+  return { adjust, notes };
 }

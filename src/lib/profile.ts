@@ -40,6 +40,9 @@ export function newProfile(): Profile {
     bedTime: '23:00',
     budget: 'standard',
     maxCookMinutes: 30,
+    skinType: 'normal',
+    skinConcerns: [],
+    hairLoss: false,
     profileVersion: PROFILE_VERSION,
     createdAt: new Date().toISOString(),
   };

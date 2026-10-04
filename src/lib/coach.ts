@@ -4,7 +4,7 @@
 // de réflexion compris) et renvoyée à l'identique, et les mises à jour de tes données
 // sont ajoutées comme un nouveau bloc dans ton message plutôt qu'en modifiant le prompt.
 import type Anthropic from '@anthropic-ai/sdk';
-import type { CoachMessage } from './types';
+import type { CoachMessage, PhysiqueAnalysis } from './types';
 
 export const COACH_MODEL = 'claude-opus-5-5';
 const CONTEXT_TAG = 'donnees_utilisateur';
@@ -93,6 +93,94 @@ export async function askCoach(opts: {
     if (e instanceof AnthropicClient.RateLimitError) throw new CoachError('Trop de requêtes ou crédit épuisé : réessaie dans un instant.');
     if (e instanceof AnthropicClient.BadRequestError) throw new CoachError(`Requête refusée : ${e.message}. Si ça persiste, démarre une nouvelle conversation.`);
     if (e instanceof AnthropicClient.APIUserAbortError) throw new CoachError('Réponse interrompue.');
+    if (e instanceof AnthropicClient.APIConnectionError) throw new CoachError('Pas de connexion internet.');
+    if (e instanceof AnthropicClient.APIError) throw new CoachError(`Erreur du service (${e.status ?? '?'}). Réessaie plus tard.`);
+    throw e;
+  }
+}
+
+// ——— Analyse IA de la silhouette (photos de progression) ———
+
+const PRIORITY_VALUES = ['chest', 'back', 'shoulders', 'arms', 'glutes', 'legs', 'abs', 'calves'] as const;
+
+const PHYSIQUE_SCHEMA = {
+  type: 'object',
+  properties: {
+    estimatedBodyFat: { type: 'string', description: 'Fourchette estimée de masse grasse, ex. « 15-18 % »' },
+    overall: { type: 'string', description: 'Synthèse en 2-3 phrases, bienveillante et directe' },
+    strengths: { type: 'array', items: { type: 'string' } },
+    weakPoints: { type: 'array', items: { type: 'string' }, description: 'Groupes musculaires ou proportions à développer' },
+    posture: { type: 'array', items: { type: 'string' }, description: 'Observations posturales (épaules enroulées, antéversion du bassin…) et correctif' },
+    suggestedPriorities: { type: 'array', items: { type: 'string', enum: [...PRIORITY_VALUES] }, description: '1 à 3 priorités musculaires' },
+    actions: { type: 'array', items: { type: 'string' }, description: '3 à 5 actions concrètes' },
+  },
+  required: ['estimatedBodyFat', 'overall', 'strengths', 'weakPoints', 'posture', 'suggestedPriorities', 'actions'],
+  additionalProperties: false,
+} as const;
+
+const PHYSIQUE_SYSTEM = `Tu es un expert en analyse morphologique pour la musculation esthétique et la posture.
+On te montre des photos de progression (face, profil, dos) et les données de l'utilisateur.
+- Analyse uniquement ce qui est visible, avec bienveillance et précision, en français.
+- Estime une fourchette de masse grasse en la recoupant avec les mesures fournies.
+- Identifie les déséquilibres de proportions (ex. épaules étroites par rapport à la taille, haut des pectoraux, dos en largeur, fessiers, mollets) et la posture.
+- Les priorités suggérées doivent être choisies parmi la liste autorisée.
+- Pas de diagnostic médical. Si les photos ne permettent pas de juger (cadrage, lumière, vêtements amples), dis-le dans la synthèse.`;
+
+async function blobToBase64(b: Blob): Promise<string> {
+  const buf = new Uint8Array(await b.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+function isAnalysis(x: unknown): x is PhysiqueAnalysis {
+  const o = x as Record<string, unknown>;
+  return (
+    !!o &&
+    typeof o.estimatedBodyFat === 'string' &&
+    typeof o.overall === 'string' &&
+    ['strengths', 'weakPoints', 'posture', 'actions', 'suggestedPriorities'].every((k) => Array.isArray(o[k]))
+  );
+}
+
+export async function analyzePhysique(opts: { apiKey: string; photos: { angle: string; date: string; blob: Blob }[]; summary: string }): Promise<PhysiqueAnalysis> {
+  const { default: AnthropicClient } = await import('@anthropic-ai/sdk');
+  const client = new AnthropicClient({ apiKey: opts.apiKey, dangerouslyAllowBrowser: true });
+  const content: Anthropic.Beta.BetaContentBlockParam[] = [];
+  for (const ph of opts.photos) {
+    content.push({ type: 'text', text: `Photo ${ph.angle} du ${ph.date} :` });
+    content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: await blobToBase64(ph.blob) } });
+  }
+  content.push({ type: 'text', text: `${contextBlock(opts.summary)}\n\nAnalyse ma silhouette et dis-moi quoi prioriser.` });
+  try {
+    const res = await client.beta.messages.create({
+      model: COACH_MODEL,
+      max_tokens: 8000,
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+      output_config: { effort: 'medium', format: { type: 'json_schema', schema: PHYSIQUE_SCHEMA as unknown as Record<string, unknown> } },
+      system: PHYSIQUE_SYSTEM,
+      messages: [{ role: 'user', content }],
+    });
+    if (res.stop_reason === 'refusal') throw new CoachError('L’analyse n’a pas pu être faite sur ces photos. Essaie avec d’autres photos (bonne lumière, tenue de sport).');
+    const text = res.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new CoachError('Réponse incomplète du service. Réessaie.');
+    }
+    if (!isAnalysis(parsed)) throw new CoachError('Réponse inattendue du service. Réessaie.');
+    parsed.suggestedPriorities = parsed.suggestedPriorities.filter((x) => (PRIORITY_VALUES as readonly string[]).includes(x)).slice(0, 3);
+    return parsed;
+  } catch (e) {
+    if (e instanceof CoachError) throw e;
+    if (e instanceof AnthropicClient.AuthenticationError) throw new CoachError('Clé API invalide. Vérifie-la dans Réglages.');
+    if (e instanceof AnthropicClient.RateLimitError) throw new CoachError('Trop de requêtes ou crédit épuisé : réessaie dans un instant.');
+    if (e instanceof AnthropicClient.BadRequestError) throw new CoachError(`Requête refusée : ${e.message}`);
     if (e instanceof AnthropicClient.APIConnectionError) throw new CoachError('Pas de connexion internet.');
     if (e instanceof AnthropicClient.APIError) throw new CoachError(`Erreur du service (${e.status ?? '?'}). Réessaie plus tard.`);
     throw e;

@@ -60,6 +60,11 @@ function ProgramView() {
             {profile.sessionMinutes <= 60 && ' Avec des séances de 75 min, ils recevraient encore plus de volume.'}
           </div>
         )}
+        {derived.autoVolume.notes.map((n) => (
+          <div key={n} className="tip">
+            🧠 {n}
+          </div>
+        ))}
         {program.healthNotes.map((n) => (
           <div key={n} className="tip" style={{ background: 'var(--warning-soft)' }}>
             {n}

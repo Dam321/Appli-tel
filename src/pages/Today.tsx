@@ -3,6 +3,9 @@ import { Icon } from '../components/icons';
 import { InstallCard } from '../components/InstallCard';
 import { ProfileUpgrade } from '../components/ProfileUpgrade';
 import { ReadinessCard } from '../components/ReadinessCard';
+import { assess } from '../lib/assessment';
+import { ActionItem, scoreTone } from './Score';
+import { useMemo } from 'react';
 import { Badge, Callout, Card, Check, Meter, Ring, Stat } from '../components/ui';
 import { daysSinceLastWeighIn, fatCategory, normalizeMeasurement, trendSeries, weeklyRate } from '../lib/bodyComp';
 import { dayScore, dayTimeline, streak } from '../lib/longevity';
@@ -55,6 +58,7 @@ export function Today() {
     leanRateKg: dataDays >= 21 ? weeklyRate(leanSeries) : undefined,
     fatRatePts: dataDays >= 21 ? weeklyRate(trendSeries(ms, 'fatPct', 0.15)) : undefined,
   });
+  const assessment = useMemo(() => assess(state, derived), [state, derived]);
   const timeline = dayTimeline(profile, {
     training: session ? session.name : schedule.cardio === 'zone2' || schedule.cardio === 'vo2max' ? schedule.label : undefined,
     morningSupps: stack.filter((x) => x.timing[0] === 'matin').map((x) => x.name),
@@ -130,6 +134,28 @@ export function Today() {
           </div>
         </Card>
       )}
+
+      <Card
+        title="Tes 3 priorités du moment"
+        sub="Ce qui aura le plus d’impact sur ta santé, d’après tes données"
+        action={
+          <button className="btn sm" onClick={() => navigate('score')}>
+            {assessment.global !== undefined ? <Badge tone={scoreTone(assessment.global)}>{`Score ${assessment.global}`}</Badge> : 'Bilan 360°'}
+          </button>
+        }
+      >
+        {assessment.actions.length ? (
+          <div className="list">
+            {assessment.actions.slice(0, 3).map((x, i) => (
+              <ActionItem key={x.id} a={x} rank={i + 1} />
+            ))}
+          </div>
+        ) : (
+          <p className="small text-2" style={{ margin: 0 }}>
+            Rien d’urgent : tout est au vert. Continue.
+          </p>
+        )}
+      </Card>
 
       <div className="grid2 grid-stats">
         <Stat label="Poids (tendance)" value={fmt(snap.weightKg)} unit="kg" delta={snap.weeklyRateKg !== undefined ? `${snap.weeklyRateKg > 0 ? '+' : ''}${fmt(snap.weeklyRateKg, 2)} kg/sem.` : 'En attente de données'} />

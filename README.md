@@ -15,7 +15,12 @@ Application mobile (PWA installable sur iPhone et Android) qui :
 - adapte la séance à ta **forme du jour** (sommeil, énergie, courbatures, motivation), fait progresser les charges selon l’**effort ressenti (RIR)** et détecte les **stagnations** ;
 - suit tes **mensurations** (proportions épaules/taille, méthode Navy), **tension** et **fréquence cardiaque de repos**, et tes **photos de progression** (stockées uniquement sur le téléphone) ;
 - propose ta **journée idéale** (lumière, repas, dernière caféine, écrans, coucher) calculée sur tes horaires ;
-- intègre un **coach IA** (Claude) optionnel qui connaît toutes tes données.
+- calcule ton **score Vitalis 360°** (8 piliers : cardio, force, composition, métabolisme, sommeil, nutrition, mental, apparence) et un **plan d’action classé par impact** sur ta santé et ta longévité ;
+- estime ton **âge biologique** (PhenoAge, Levine 2018) à partir de 9 analyses sanguines courantes et planifie ta **prochaine prise de sang** ;
+- révèle ce que disent **tes propres données** : date prévue d’arrivée à l’objectif, effet de ton sommeil sur ta forme, muscles qui progressent ou stagnent, évolution de la prise de sang ;
+- **ajuste le programme tout seul** : +1 série pour les muscles qui stagnent (sauf si ta récupération est mauvaise) ;
+- donne une routine **peau, cheveux & dents** fondée sur les preuves (selon ton type de peau et tes objectifs) ;
+- intègre un **coach IA** (Claude) optionnel qui connaît toutes tes données, fait ton **rapport de la semaine** et **analyse ta silhouette** sur tes photos (points faibles, posture, priorités musculaires appliquées au programme en un geste).
 
 Toutes les données restent **sur ton téléphone** (stockage local). Seuls Withings (si tu le connectes) et Anthropic (si tu actives le coach) reçoivent des données.
 
@@ -68,4 +73,6 @@ Organisation :
 - Tendance de poids lissée et ajustement calorique adaptatif.
 - VO2max et force comme prédicteurs de mortalité (Mandsager 2018), zone 2 + intervalles 4×4 (Helgerud 2007).
 - Aliments ultra-transformés (Hall 2019), diversité végétale (American Gut 2018), fermentés (Wastyk 2021).
+- Âge biologique PhenoAge (Levine 2018, Liu 2018) ; ApoB et Lp(a) (ESC/EAS 2019-2022).
+- Peau : photoprotection quotidienne (Hughes 2013), rétinoïdes (Kafi 2007), minoxidil (Gupta 2022).
 - Compléments : créatine, vitamine D, oméga-3 (VITAL, REDUCE-IT), fer un jour sur deux (Stoffel 2017), psyllium et LDL, antioxydants à haute dose et adaptations (Paulsen 2014).

@@ -6,9 +6,11 @@ import { generateWeekPlan, type PlannerOptions, type WeekPlan } from './mealPlan
 import { microCoverage, microReferences, weeklyMicros, type MicroCoverage } from './micronutrients';
 import { computeTargets, type NutritionTargets } from './nutrition';
 import { activeStack, supplementPlan, type SupplementRec } from './supplements';
-import { buildProgram, type Program } from './training';
+import { autoVolume, buildProgram, readinessScore, type AutoVolume, type Program } from './training';
 import type { AppState, Profile } from './types';
-import { fmt, todayISO } from './util';
+import { addDays, fmt, todayISO } from './util';
+import { assess } from './assessment';
+import { insights } from './insights';
 
 export interface Derived {
   profile: Profile;
@@ -25,6 +27,7 @@ export interface Derived {
   habits: Habit[];
   micros: MicroCoverage[];
   plannerOptions: PlannerOptions;
+  autoVolume: AutoVolume;
 }
 
 /** Profil cardiovasculaire à protéger : oriente le menu (moins de viande rouge/fromage) */
@@ -53,7 +56,13 @@ export function computeDerived(state: AppState): Derived | null {
   const latest = latestValues(state.measurements);
   // FC de repos saisie (montre, matin au calme) en priorité ; sinon celle de la balance (debout, un peu plus haute)
   const restingHr = latest.restingHr?.value ?? latest.heartRate?.value;
-  const program = buildProgram(profile, state.plan.programStart, state.plan.programVariant, todayISO(), restingHr);
+  const today = todayISO();
+  const readinessValues = Array.from({ length: 14 }, (_, i) => state.daily[addDays(today, -i)]?.readiness)
+    .filter((r): r is NonNullable<typeof r> => !!r)
+    .map(readinessScore);
+  const readinessAvg = readinessValues.length >= 3 ? readinessValues.reduce((a, b) => a + b, 0) / readinessValues.length : undefined;
+  const auto = autoVolume(state.workouts, today, readinessAvg);
+  const program = buildProgram(profile, state.plan.programStart, state.plan.programVariant, today, restingHr, { volumeAdjust: auto.adjust });
   const usesProteinPowder = week.days.some((d) => d.meals.some((m) => m.ingredients.some((i) => i.food === 'whey' || i.food === 'pea_protein')));
   const supplements = supplementPlan({
     profile,
@@ -81,6 +90,7 @@ export function computeDerived(state: AppState): Derived | null {
     habits: habitsFor(profile, targets.waterL, targets.protein),
     micros: microCoverage(week, profile),
     plannerOptions,
+    autoVolume: auto,
   };
 }
 
@@ -139,5 +149,12 @@ export function coachSummary(state: AppState, d: Derived): string {
   if (last7.length) lines.push(`Habitudes cochées (7 j) : ${last7.join(' | ')}.`);
   const latest = trendSeries(state.measurements, 'weightKg');
   if (latest.length > 1) lines.push(`Nombre de jours de pesées : ${latest.length}.`);
+  const a = assess(state, d);
+  lines.push(`Bilan 360° : score global ${a.global ?? 'n/a'} ; ${a.pillars.map((x) => `${x.label} ${x.score ?? 'n/a'}`).join(', ')}.`);
+  if (a.bio.phenoAge !== undefined) lines.push(`Âge biologique (PhenoAge) : ${a.bio.phenoAge.toFixed(1)} ans pour ${a.bio.chronoAge} ans.`);
+  lines.push(`Actions prioritaires calculées : ${a.actions.slice(0, 5).map((x) => x.title).join(' ; ') || 'aucune'}.`);
+  const ins = insights(state, d);
+  if (ins.length) lines.push(`Observations sur ses données : ${ins.map((x) => `${x.title} (${x.text})`).join(' ; ')}.`);
+  if (d.autoVolume.notes.length) lines.push(`Ajustements automatiques du programme : ${d.autoVolume.notes.join(' ')}`);
   return lines.join('\n');
 }

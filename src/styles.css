@@ -1484,3 +1484,24 @@ details[open] > summary.disclosure::after {
   height: 100%;
   object-fit: cover;
 }
+
+.rank {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  margin-top: 1px;
+}
+
+.ai-box {
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  background: var(--accent-soft);
+  border-radius: 14px;
+  padding: 12px;
+}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { navigate } from '../App';
 import { Icon } from '../components/icons';
 import { Badge, Callout, Card, ConfirmButton, Evidence, Field, NumberInput, Segmented, Sheet, shareOrCopy, type Tone } from '../components/ui';
@@ -8,9 +8,13 @@ import { cooperVo2, longevityProtocol, vo2Category } from '../lib/longevity';
 import { dailySchedule, medicationWarnings, STATUS_INFO, TIMING_LABEL, type SupplementRec } from '../lib/supplements';
 import { fmt, formatDay, todayISO, uid } from '../lib/util';
 import { useApp } from '../store';
+import { bioAge } from '../lib/bioage';
+import { skinPlan, type RoutineStep } from '../lib/skin';
+import type { Profile, SkinConcern, SkinType } from '../lib/types';
+import { Chips, Toggle } from '../components/ui';
 
 export function Health({ tab }: { tab?: string }) {
-  const t = tab === 'blood' || tab === 'longevity' ? tab : 'supplements';
+  const t = tab === 'blood' || tab === 'longevity' || tab === 'skin' ? tab : 'supplements';
   return (
     <>
       <Segmented
@@ -18,13 +22,15 @@ export function Health({ tab }: { tab?: string }) {
         onChange={(v) => navigate('health', v === 'supplements' ? undefined : v)}
         options={[
           { value: 'supplements', label: 'Compléments' },
-          { value: 'blood', label: 'Prise de sang' },
+          { value: 'blood', label: 'Sang' },
           { value: 'longevity', label: 'Longévité' },
+          { value: 'skin', label: 'Peau' },
         ]}
       />
       {t === 'supplements' && <Supplements />}
       {t === 'blood' && <Blood />}
       {t === 'longevity' && <Longevity />}
+      {t === 'skin' && <Skin />}
     </>
   );
 }
@@ -146,6 +152,8 @@ function Blood() {
           Fréquence : bilan de départ, contrôle à 3 mois si tu corriges une carence, puis 1-2 fois par an.
         </p>
       </Card>
+
+      <BioAgeCard />
 
       <button className="btn primary block" onClick={() => setEntering(true)}>
         <Icon.plus /> Saisir mes résultats
@@ -398,6 +406,117 @@ function Longevity() {
           ))}
         </Card>
       ))}
+    </>
+  );
+}
+
+function BioAgeCard() {
+  const { state, derived } = useApp();
+  const bio = useMemo(() => bioAge(state.bloodPanels, derived.profile), [state.bloodPanels, derived.profile]);
+  if (bio.phenoAge === undefined)
+    return state.bloodPanels.length ? (
+      <Callout title="Âge biologique : presque prêt" action={<button className="btn sm" onClick={() => navigate('score')}>En savoir plus</button>}>
+        Il manque {bio.missing.join(', ')} pour calculer ton âge biologique (PhenoAge).
+      </Callout>
+    ) : null;
+  return (
+    <Card title="Ton âge biologique" action={<button className="btn sm" onClick={() => navigate('score')}>Bilan 360°</button>}>
+      <div className="row" style={{ alignItems: 'baseline', gap: 10 }}>
+        <span className="hero-number">{bio.phenoAge.toFixed(1).replace('.', ',')}</span>
+        <span className="text-2">ans pour {bio.chronoAge} ans réels</span>
+      </div>
+    </Card>
+  );
+}
+
+const SKIN_TYPES: { value: SkinType; label: string }[] = [
+  { value: 'normal', label: 'Normale' },
+  { value: 'oily', label: 'Grasse' },
+  { value: 'combination', label: 'Mixte' },
+  { value: 'dry', label: 'Sèche' },
+  { value: 'sensitive', label: 'Sensible' },
+];
+
+const CONCERNS: { value: SkinConcern; label: string }[] = [
+  { value: 'aging', label: 'Rides / fermeté' },
+  { value: 'pigmentation', label: 'Taches' },
+  { value: 'acne', label: 'Acné / boutons' },
+  { value: 'redness', label: 'Rougeurs' },
+  { value: 'pores', label: 'Pores / brillance' },
+  { value: 'dark_circles', label: 'Cernes' },
+];
+
+function Steps({ steps }: { steps: RoutineStep[] }) {
+  return (
+    <div className="list">
+      {steps.map((st, i) => (
+        <div key={st.product} className="list-item" style={{ alignItems: 'flex-start' }}>
+          <span className="rank">{i + 1}</span>
+          <div className="main">
+            <div className="title">
+              {st.product} {st.rx && <Badge tone="warning">ordonnance</Badge>}
+            </div>
+            <div className="sub">{st.detail}</div>
+            <div style={{ marginTop: 6 }}>
+              <Evidence level={st.evidence} />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Skin() {
+  const { derived, update } = useApp();
+  const p = derived.profile;
+  const plan = useMemo(() => skinPlan(p), [p]);
+  const set = (patch: Partial<Profile>) => update((s) => ({ ...s, profile: { ...s.profile!, ...patch } }));
+  return (
+    <>
+      <Card title="Ta peau" sub="La routine se recalcule à chaque changement">
+        <div className="stack" style={{ gap: 12 }}>
+          <Field label="Type de peau">
+            <Segmented value={p.skinType} onChange={(skinType) => set({ skinType })} options={SKIN_TYPES} />
+          </Field>
+          <Field label="Ce que tu veux améliorer">
+            <Chips options={CONCERNS} selected={p.skinConcerns} onToggle={(v) => set({ skinConcerns: p.skinConcerns.includes(v) ? p.skinConcerns.filter((x) => x !== v) : [...p.skinConcerns, v] })} />
+          </Field>
+          <Toggle label="Chute de cheveux / cheveux qui s’affinent" checked={p.hairLoss} onChange={(hairLoss) => set({ hairLoss })} />
+        </div>
+      </Card>
+      {plan.notes.map((n) => (
+        <Callout key={n} title="À savoir">
+          {n}
+        </Callout>
+      ))}
+      <Card title="Routine du matin">
+        <Steps steps={plan.am} />
+      </Card>
+      <Card title="Routine du soir">
+        <Steps steps={plan.pm} />
+      </Card>
+      {plan.weekly.length > 0 && (
+        <Card title="Chaque semaine">
+          <Steps steps={plan.weekly} />
+        </Card>
+      )}
+      {plan.hair.length > 0 && (
+        <Card title="Cheveux">
+          <Steps steps={plan.hair} />
+        </Card>
+      )}
+      <Card title="Sourire">
+        <Steps steps={plan.teeth} />
+      </Card>
+      <Card title="Ce qui se voit de l’extérieur commence à l’intérieur">
+        <ul className="steps" style={{ color: 'var(--text)' }}>
+          {plan.lifestyle.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+      </Card>
+      <p className="small muted">Types de produits, pas de marques. Peau très réactive, acné sévère ou grain de beauté qui change : consulte un dermatologue.</p>
     </>
   );
 }
