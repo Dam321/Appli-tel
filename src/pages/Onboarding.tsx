@@ -5,14 +5,16 @@ import { importState } from '../lib/storage';
 import type { Profile } from '../lib/types';
 import { uid } from '../lib/util';
 import { useStore } from '../store';
-import { FoodStep, GoalStep, IdentityStep, newProfile, RecoveryStep, TrainingStep } from './ProfileForm';
+import { FoodStep, GoalStep, HealthStep, IdentityStep, newProfile, RecoveryStep, RhythmStep, TrainingStep } from './ProfileForm';
 
 const STEPS = [
   { title: 'Faisons connaissance', sub: 'Ces données restent sur ton téléphone.', C: IdentityStep },
   { title: 'Ton objectif', sub: 'Gagner du muscle, perdre du gras… ou les deux.', C: GoalStep },
   { title: 'Ton entraînement', sub: 'Le programme s’adapte à ton temps et ton matériel.', C: TrainingStep },
+  { title: 'Ton rythme & tes priorités', sub: 'Horaires, jours d’entraînement, points faibles à corriger.', C: RhythmStep },
   { title: 'Ton alimentation', sub: 'Pour générer ton menu et ta liste de courses.', C: FoodStep },
   { title: 'Récupération', sub: 'Sommeil et stress orientent aussi tes compléments.', C: RecoveryStep },
+  { title: 'Ta santé', sub: 'Pour un programme sûr : interactions, adaptations, dépistages. Reste sur ton téléphone.', C: HealthStep },
 ];
 
 export function Onboarding() {

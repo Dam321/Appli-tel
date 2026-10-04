@@ -2,7 +2,8 @@
 import { latestBlood, markerStatus, MARKER_BY_ID, STATUS_LABEL, type MarkerStatus } from './blood';
 import { bodySnapshot, latestValues, trendSeries, type BodySnapshot } from './bodyComp';
 import { habitsFor, type Habit } from './longevity';
-import { generateWeekPlan, type WeekPlan } from './mealPlanner';
+import { generateWeekPlan, type PlannerOptions, type WeekPlan } from './mealPlanner';
+import { microCoverage, microReferences, weeklyMicros, type MicroCoverage } from './micronutrients';
 import { computeTargets, type NutritionTargets } from './nutrition';
 import { activeStack, supplementPlan, type SupplementRec } from './supplements';
 import { buildProgram, type Program } from './training';
@@ -22,6 +23,20 @@ export interface Derived {
   blood: Record<string, number>;
   bloodDates: Record<string, string>;
   habits: Habit[];
+  micros: MicroCoverage[];
+  plannerOptions: PlannerOptions;
+}
+
+/** Profil cardiovasculaire à protéger : oriente le menu (moins de viande rouge/fromage) */
+export function lipidFocus(profile: Profile, blood: Record<string, number>): boolean {
+  return (
+    profile.conditions.includes('high_cholesterol') ||
+    profile.conditions.includes('heart') ||
+    profile.familyHistory.includes('heart') ||
+    (blood.apob ?? 0) > 0.8 ||
+    (blood.ldl ?? 0) > 100 ||
+    (blood.lpa ?? 0) > 75
+  );
 }
 
 export function computeDerived(state: AppState): Derived | null {
@@ -30,12 +45,15 @@ export function computeDerived(state: AppState): Derived | null {
   const snap = bodySnapshot(profile, state.measurements);
   const targets = computeTargets(profile, snap, state.plan.kcalAdjustment);
   const mealTargets: NutritionTargets = state.plan.mealTargets ? { ...targets, ...state.plan.mealTargets } : targets;
-  const week = generateWeekPlan(profile, mealTargets, state.plan);
-  const latest = latestValues(state.measurements);
-  const program = buildProgram(profile, state.plan.programStart, state.plan.programVariant, todayISO(), latest.heartRate?.value);
   const bl = latestBlood(state.bloodPanels);
   const blood = Object.fromEntries(Object.entries(bl).map(([k, v]) => [k, v.value]));
   const bloodDates = Object.fromEntries(Object.entries(bl).map(([k, v]) => [k, v.date]));
+  const plannerOptions: PlannerOptions = { lipidFocus: lipidFocus(profile, blood) };
+  const week = generateWeekPlan(profile, mealTargets, state.plan, plannerOptions);
+  const latest = latestValues(state.measurements);
+  // FC de repos saisie (montre, matin au calme) en priorité ; sinon celle de la balance (debout, un peu plus haute)
+  const restingHr = latest.restingHr?.value ?? latest.heartRate?.value;
+  const program = buildProgram(profile, state.plan.programStart, state.plan.programVariant, todayISO(), restingHr);
   const usesProteinPowder = week.days.some((d) => d.meals.some((m) => m.ingredients.some((i) => i.food === 'whey' || i.food === 'pea_protein')));
   const supplements = supplementPlan({
     profile,
@@ -46,6 +64,8 @@ export function computeDerived(state: AppState): Derived | null {
     avgFiber: week.avgFiber,
     usesProteinPowder,
     month: new Date().getMonth(),
+    micros: weeklyMicros(week),
+    microRefs: microReferences(profile),
   });
   return {
     profile,
@@ -59,6 +79,8 @@ export function computeDerived(state: AppState): Derived | null {
     blood,
     bloodDates,
     habits: habitsFor(profile, targets.waterL, targets.protein),
+    micros: microCoverage(week, profile),
+    plannerOptions,
   };
 }
 
@@ -82,6 +104,11 @@ export function coachSummary(state: AppState, d: Derived): string {
   lines.push(
     `Profil : ${p.sex === 'male' ? 'homme' : 'femme'}, ${s.age} ans, ${p.heightCm} cm, niveau ${LABELS[p.experience]}, ${p.trainingDays} séances/sem de ${p.sessionMinutes} min, matériel : ${p.equipment.join(', ') || 'aucun'}, blessures : ${p.injuries.join(', ') || 'aucune'}, régime ${LABELS[p.diet]}, allergies : ${p.allergens.join(', ') || 'aucune'}, sommeil ${p.sleepQuality}/5 (1 = très bon), stress ${p.stressLevel}/5, alcool ${p.alcoholPerWeek} verres/sem.`,
   );
+  lines.push(
+    `Santé : pathologies ${p.conditions.join(', ') || 'aucune'} ; traitements ${p.medications.join(', ') || 'aucun'} ; tabac ${p.smoking} ; antécédents familiaux ${p.familyHistory.join(', ') || 'aucun'}${p.femaleStatus ? ` ; statut ${p.femaleStatus}` : ''}. Rythme : lever ${p.wakeTime}, coucher ${p.bedTime}, entraînement ${p.trainingTime}. Priorités musculaires : ${p.priorities.join(', ') || 'aucune'}. Cardio préféré : ${p.cardioModes.join(', ')}. Budget ${p.budget}, cuisine max ${p.maxCookMinutes} min.`,
+  );
+  if (t.notes.length) lines.push(`Adaptations santé de la nutrition : ${t.notes.join(' ')}`);
+  lines.push(`Micronutriments du menu (% des références) : ${d.micros.map((m) => `${m.label} ${m.pct} %`).join(', ')}.`);
   lines.push(
     `Composition (tendance lissée) : ${fmt(s.weightKg)} kg, ${fmt(s.fatPct)} % de gras (${s.fatPctSource}), masse maigre ${fmt(s.leanMassKg)} kg, FFMI ${fmt(s.ffmi)}, IMC ${fmt(s.bmi)}${s.waistToHeight ? `, tour de taille/taille ${fmt(s.waistToHeight, 2)}` : ''}${s.weeklyRateKg !== undefined ? `, évolution ${fmt(s.weeklyRateKg, 2)} kg/sem` : ''}.`,
   );

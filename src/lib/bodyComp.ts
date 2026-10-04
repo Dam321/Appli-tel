@@ -17,7 +17,14 @@ export type NumericField =
   | 'vascularAge'
   | 'systolic'
   | 'diastolic'
-  | 'vo2max';
+  | 'vo2max'
+  | 'restingHr'
+  | 'neckCm'
+  | 'hipCm'
+  | 'chestCm'
+  | 'shouldersCm'
+  | 'armCm'
+  | 'thighCm';
 
 /** Complète les champs dérivables d'une mesure (masse grasse ↔ %). */
 export function normalizeMeasurement(m: Measurement): Measurement {
@@ -204,4 +211,60 @@ export function daysSinceLastWeighIn(ms: Measurement[]): number | undefined {
   if (!withWeight.length) return undefined;
   const last = sortedMeasurements(withWeight).at(-1)!;
   return Math.floor((Date.now() - parseDay(dayKey(last.date)).getTime()) / 86_400_000);
+}
+
+/** % de gras par la méthode US Navy (mètre ruban) : recoupe la bio-impédance de la balance */
+export function navyBodyFat(sex: Sex, heightCm: number, neckCm?: number, waistCm?: number, hipCm?: number): number | undefined {
+  if (!neckCm || !waistCm) return undefined;
+  if (sex === 'male') {
+    if (waistCm <= neckCm) return undefined;
+    return 495 / (1.0324 - 0.19077 * Math.log10(waistCm - neckCm) + 0.15456 * Math.log10(heightCm)) - 450;
+  }
+  if (!hipCm || waistCm + hipCm <= neckCm) return undefined;
+  return 495 / (1.29579 - 0.35004 * Math.log10(waistCm + hipCm - neckCm) + 0.221 * Math.log10(heightCm)) - 450;
+}
+
+export type Tone = 'good' | 'warning' | 'serious' | 'critical' | 'neutral';
+
+/** Catégories de tension (ESH/ESC) */
+export function bpCategory(sys: number, dia: number): { label: string; tone: Tone } {
+  if (sys >= 140 || dia >= 90) return { label: 'Hypertension : à montrer à ton médecin', tone: 'critical' };
+  if (sys >= 130 || dia >= 85) return { label: 'Normale haute', tone: 'warning' };
+  if (sys >= 120 || dia >= 80) return { label: 'Normale', tone: 'neutral' };
+  return { label: 'Optimale', tone: 'good' };
+}
+
+export function restingHrCategory(hr: number): { label: string; tone: Tone } {
+  if (hr < 55) return { label: 'Excellente (cœur entraîné)', tone: 'good' };
+  if (hr < 65) return { label: 'Bonne', tone: 'good' };
+  if (hr < 75) return { label: 'Moyenne', tone: 'neutral' };
+  if (hr < 85) return { label: 'Élevée : plus de zone 2', tone: 'warning' };
+  return { label: 'Très élevée : à surveiller', tone: 'serious' };
+}
+
+export interface Proportions {
+  waistToHip?: { value: number; ok: boolean; target: string };
+  shoulderToWaist?: { value: number; ok: boolean; target: string };
+  navyFatPct?: number;
+}
+
+export function proportions(sex: Sex, heightCm: number, ms: Measurement[]): Proportions {
+  const l = latestValues(ms);
+  const waist = l.waistCm?.value;
+  const hip = l.hipCm?.value;
+  const shoulders = l.shouldersCm?.value;
+  const out: Proportions = {};
+  if (waist && hip) {
+    const v = waist / hip;
+    const lim = sex === 'male' ? 0.9 : 0.85;
+    out.waistToHip = { value: v, ok: v < lim, target: `< ${lim.toLocaleString('fr-FR')}` };
+  }
+  if (waist && shoulders) {
+    // Indice « Adonis » : idéal esthétique ~1,6 chez l'homme, ~1,4 chez la femme
+    const v = shoulders / waist;
+    const ideal = sex === 'male' ? 1.6 : 1.4;
+    out.shoulderToWaist = { value: v, ok: v >= ideal - 0.05, target: `≈ ${ideal.toLocaleString('fr-FR')}` };
+  }
+  out.navyFatPct = navyBodyFat(sex, heightCm, l.neckCm?.value, waist, hip);
+  return out;
 }

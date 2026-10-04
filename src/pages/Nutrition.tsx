@@ -221,8 +221,8 @@ function Shopping() {
     if (scope === 'week') return derived.week;
     if (scope === 'rest') return { ...derived.week, days: derived.week.days.filter((d) => d.index >= todayIdx) };
     const t = derived.targets;
-    return generateWeekPlan(derived.profile, t, { mealSeed: nextSeed(state.plan.mealSeed), mealWeekStart: addDays(derived.week.weekStart, 7), mealOverrides: {} });
-  }, [scope, derived.week, derived.targets, derived.profile, state.plan.mealSeed, todayIdx]);
+    return generateWeekPlan(derived.profile, t, { mealSeed: nextSeed(state.plan.mealSeed), mealWeekStart: addDays(derived.week.weekStart, 7), mealOverrides: {} }, derived.plannerOptions);
+  }, [scope, derived.week, derived.targets, derived.profile, derived.plannerOptions, state.plan.mealSeed, todayIdx]);
 
   // Les cases cochées sont mémorisées par semaine (préfixe = lundi de la semaine).
   const prefix = `${plan.weekStart}|`;
@@ -355,6 +355,27 @@ function Targets() {
         <Stat label="Eau" value={fmt(t.waterL)} unit="L" />
         <Stat label="Prot./repas" value={`≥ ${t.proteinPerMeal}`} unit="g" />
       </div>
+      {t.notes.map((n) => (
+        <Callout key={n} tone="warning" title="Adaptation santé">
+          {n}
+        </Callout>
+      ))}
+      <Card title="Vitamines & minéraux de ton menu" sub="Apport moyen par jour sur la semaine, comparé aux références ANSES pour ton profil">
+        <div className="stack" style={{ gap: 8 }}>
+          {derived.micros.map((m) => (
+            <div key={m.key} className="macro-row" title={m.why}>
+              <span>{m.label}</span>
+              <Meter value={Math.min(m.pct, 100)} max={100} color={m.pct < 70 ? 'var(--warning)' : undefined} />
+              <span className="small" style={{ fontVariantNumeric: 'tabular-nums', minWidth: 44, textAlign: 'right' }}>
+                {m.pct} %
+              </span>
+            </div>
+          ))}
+        </div>
+        <p className="small muted" style={{ marginBottom: 0 }}>
+          Sous 70 % : le complément correspondant est ajusté dans l’onglet Santé. La vitamine D vient surtout du soleil, pas de l’assiette. Valeurs indicatives (tables Ciqual/USDA).
+        </p>
+      </Card>
       <Card title="Les règles qui font la différence">
         <ul className="steps" style={{ color: 'var(--text)' }}>
           <li>

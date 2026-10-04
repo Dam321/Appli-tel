@@ -3,7 +3,7 @@
 // (4 de progression en RIR décroissant + 1 de décharge), double progression,
 // et cardio « longévité » (zone 2 + VO2max 4×4).
 import { EXERCISES, EXERCISE_BY_ID, MUSCLE_LABEL, type Exercise, type Muscle, type Pattern } from '../data/exercises';
-import type { ExerciseLog, Profile, WorkoutLog } from './types';
+import type { CardioMode, ExerciseLog, MusclePriority, Profile, Readiness, WorkoutLog } from './types';
 import { ageFromBirthYear, daysBetween, todayISO, weekdayIndex } from './util';
 
 export interface ProgramExercise {
@@ -15,6 +15,8 @@ export interface ProgramExercise {
   rest: number;
   cue: string;
   superset?: boolean;
+  /** Exercice ajouté / renforcé pour un muscle prioritaire */
+  priority?: boolean;
   alternatives: string[];
 }
 
@@ -31,6 +33,8 @@ export interface CardioPlan {
   vo2: { sessions: number; protocol: string; hrLow: number; hrHigh: number } | null;
   steps: number;
   hrMax: number;
+  /** Activités conseillées selon tes préférences */
+  modes: string;
   notes: string[];
 }
 
@@ -51,6 +55,8 @@ export interface Program {
   cycle: number;
   deload: boolean;
   weekNote: string;
+  /** Adaptations liées à la santé */
+  healthNotes: string[];
 }
 
 const T = {
@@ -76,6 +82,34 @@ const SPLITS: Record<number, { name: string; sessions: TemplateKey[]; days: numb
   6: { name: 'Push / Pull / Jambes ×2', sessions: ['PUSH', 'PULL', 'LEGS', 'PUSH', 'PULL', 'LEGS'], days: [0, 1, 2, 3, 4, 5] },
 };
 
+/** Muscles et mouvements supplémentaires pour chaque priorité esthétique */
+export const PRIORITY_INFO: Record<MusclePriority, { label: string; muscles: Muscle[]; patterns: Pattern[] }> = {
+  chest: { label: 'Pectoraux', muscles: ['chest'], patterns: ['fly'] },
+  back: { label: 'Dos (largeur & épaisseur)', muscles: ['lats', 'upper_back'], patterns: ['lat_iso', 'h_pull'] },
+  shoulders: { label: 'Épaules', muscles: ['side_delts', 'rear_delts', 'front_delts'], patterns: ['lateral_raise', 'rear_delt'] },
+  arms: { label: 'Bras', muscles: ['biceps', 'triceps'], patterns: ['biceps', 'triceps'] },
+  glutes: { label: 'Fessiers', muscles: ['glutes'], patterns: ['hip_thrust'] },
+  legs: { label: 'Cuisses', muscles: ['quads', 'hamstrings'], patterns: ['knee_extension', 'knee_flexion'] },
+  abs: { label: 'Abdos / taille', muscles: ['abs'], patterns: ['core'] },
+  calves: { label: 'Mollets', muscles: ['calves'], patterns: ['calves'] },
+};
+
+const MODE_LABEL: Record<CardioMode, string> = {
+  bike: 'vélo',
+  run: 'course à pied',
+  row: 'rameur',
+  swim: 'natation',
+  walk: 'marche rapide en côte',
+  elliptical: 'vélo elliptique',
+};
+
+/** Plafonne l'intensité (RIR minimum) pour raisons de santé */
+function capRir(rir: string, min: number): string {
+  const n = parseInt(rir, 10);
+  if (Number.isNaN(n) || n >= min) return rir;
+  return `${min}${rir.includes('décharge') ? ' (décharge)' : ''}`;
+}
+
 export function availableExercises(profile: Profile, pattern: Pattern): Exercise[] {
   return EXERCISES.filter(
     (e) => e.pattern === pattern && e.equipment.every((eq) => profile.equipment.includes(eq)) && !e.avoid.some((inj) => profile.injuries.includes(inj)),
@@ -96,9 +130,24 @@ export function programWeek(programStart: string, today = todayISO()): { week: n
 export function buildProgram(profile: Profile, programStart: string, variant = 0, today = todayISO(), restingHr?: number): Program {
   const days = Math.min(6, Math.max(2, profile.trainingDays));
   const split = SPLITS[days];
+  const preferred = [...new Set(profile.trainingWeekdays ?? [])].filter((d) => d >= 0 && d <= 6).sort((a, b) => a - b);
+  const liftDays = preferred.length === days ? preferred : split.days;
   const { week, cycle } = programWeek(programStart, today);
   const deload = week === 5;
   const usage = new Map<Pattern, number>();
+  const healthNotes: string[] = [];
+  const cardiac = profile.conditions.includes('heart') || profile.conditions.includes('hypertension');
+  const pregnant = profile.femaleStatus === 'pregnant';
+  const minRir = pregnant ? 3 : cardiac ? 2 : 0;
+  if (cardiac)
+    healthNotes.push(
+      'Cœur / tension : expire pendant l’effort (pas d’apnée bloquée), garde 2 reps en réserve sur les gros mouvements, et fais valider le fractionné intense par ton médecin (idéalement après un test d’effort).',
+    );
+  if (pregnant)
+    healthNotes.push('Grossesse : entraînement avec l’accord de ton suivi, 3 reps en réserve, pas d’exercice allongé sur le dos après 20 semaines, rien avec risque de chute ou de choc au ventre.');
+  if (profile.conditions.includes('osteoporosis'))
+    healthNotes.push('Os fragiles : la musculation lourde est bénéfique, mais évite les flexions du dos chargées (crunchs lestés) et privilégie la technique.');
+  const priorityMuscles = new Set(profile.priorities.flatMap((p) => PRIORITY_INFO[p].muscles));
 
   const sessions: ProgramSession[] = split.sessions.map((key, sIdx) => {
     const tpl = T[key];
@@ -120,27 +169,93 @@ export function buildProgram(profile: Profile, programStart: string, variant = 0
         name: ex.name,
         sets,
         reps: ex.reps,
-        rir: RIR_BY_WEEK[profile.experience][week - 1],
+        rir: capRir(RIR_BY_WEEK[profile.experience][week - 1], minRir),
         rest: ex.rest,
         cue: ex.cue,
         alternatives: options.filter((o) => o.id !== ex.id).map((o) => o.id),
       });
     }
+    // Spécialisation : volume supplémentaire pour les muscles prioritaires
+    for (const pr of profile.priorities) {
+      const info = PRIORITY_INFO[pr];
+      const trainsIt = exercises.some((e) => EXERCISE_BY_ID[e.exerciseId].primary.some((m) => info.muscles.includes(m)));
+      if (!trainsIt) continue;
+      for (const pattern of info.patterns) {
+        const existing = exercises.find((e) => EXERCISE_BY_ID[e.exerciseId].pattern === pattern);
+        if (existing) {
+          if (!existing.priority) {
+            existing.priority = true;
+            if (!deload) existing.sets = Math.min(5, existing.sets + 1);
+          }
+          continue;
+        }
+        const options = availableExercises(profile, pattern).filter((e) => !used.has(e.id));
+        if (!options.length) continue;
+        const ex = options[(variant + cycle - 1) % Math.min(options.length, 2)];
+        used.add(ex.id);
+        exercises.push({
+          exerciseId: ex.id,
+          name: ex.name,
+          sets: deload ? 1 : profile.experience === 'beginner' ? 2 : 3,
+          reps: ex.reps,
+          rir: capRir(RIR_BY_WEEK[profile.experience][week - 1], minRir),
+          rest: ex.rest,
+          cue: ex.cue,
+          priority: true,
+          alternatives: options.filter((o) => o.id !== ex.id).map((o) => o.id),
+        });
+      }
+    }
+    for (const e of exercises) if (EXERCISE_BY_ID[e.exerciseId].primary.some((m) => priorityMuscles.has(m))) e.priority = true;
     fitToDuration(exercises, profile.sessionMinutes);
     return { id: `${key}-${sIdx}`, name: tpl.name, focus: tpl.focus, exercises, estMinutes: estimateMinutes(exercises) };
   });
 
+  // Fréquence des muscles prioritaires : on les ajoute aussi aux séances qui ont du temps libre
+  // (ex. élévations latérales le jour des jambes), jusqu'à 3 séances par semaine.
+  for (const pr of profile.priorities) {
+    const info = PRIORITY_INFO[pr];
+    const hasIt = (sess: ProgramSession) => sess.exercises.some((e) => info.patterns.includes(EXERCISE_BY_ID[e.exerciseId].pattern));
+    const wanted = Math.min(3, sessions.length);
+    const candidates = sessions.filter((x) => !hasIt(x)).sort((a, b) => a.estMinutes - b.estMinutes);
+    for (const sess of candidates) {
+      if (sessions.filter(hasIt).length >= wanted) break;
+      const pattern = info.patterns[0];
+      const ex = availableExercises(profile, pattern).find((e) => !sess.exercises.some((x) => x.exerciseId === e.id));
+      if (!ex) continue;
+      const add: ProgramExercise = {
+        exerciseId: ex.id,
+        name: ex.name,
+        sets: deload ? 1 : 3,
+        reps: ex.reps,
+        rir: capRir(RIR_BY_WEEK[profile.experience][week - 1], minRir),
+        rest: ex.rest,
+        cue: ex.cue,
+        priority: true,
+        alternatives: availableExercises(profile, pattern).filter((o) => o.id !== ex.id).map((o) => o.id),
+      };
+      if (estimateMinutes([...sess.exercises, add]) > profile.sessionMinutes) continue;
+      sess.exercises.push(add);
+      sess.estMinutes = estimateMinutes(sess.exercises);
+    }
+  }
+
   const cardio = cardioPlan(profile, restingHr);
+  if (cardiac && cardio.vo2) {
+    cardio.vo2 = null;
+    cardio.notes.push('Fractionné VO2max mis en pause : à réintroduire après feu vert médical.');
+  }
+  if (pregnant) cardio.vo2 = null;
   const schedule: DayPlan[] = [];
-  const restDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => !split.days.includes(d));
+  const restDays = [0, 1, 2, 3, 4, 5, 6].filter((d) => !liftDays.includes(d));
   let z2Left = cardio.zone2.sessions;
   let vo2Left = cardio.vo2 ? 1 : 0;
   for (let wd = 0; wd < 7; wd++) {
-    const sIdx = split.days.indexOf(wd);
+    const sIdx = liftDays.indexOf(wd);
     if (sIdx >= 0) {
       const s = sessions[sIdx];
       schedule.push({ weekday: wd, sessionId: s.id, label: s.name });
-    } else if (wd === 6) {
+    } else if (wd === restDays[restDays.length - 1]) {
       schedule.push({ weekday: wd, cardio: 'mobility', label: 'Repos actif : marche longue + mobilité' });
     } else if (vo2Left && restDays.length > 1 && wd !== restDays[0]) {
       vo2Left--;
@@ -175,6 +290,7 @@ export function buildProgram(profile: Profile, programStart: string, variant = 0
     cycle,
     deload,
     weekNote: weekNote(week, profile),
+    healthNotes,
   };
 }
 
@@ -197,19 +313,44 @@ export function estimateMinutes(exs: ProgramExercise[]): number {
 
 function fitToDuration(exs: ProgramExercise[], minutes: number) {
   if (estimateMinutes(exs) <= minutes) return;
+  const isCompound = (e: ProgramExercise) => EXERCISE_BY_ID[e.exerciseId].compound;
   // 1. Biceps/triceps en superset
   const bi = exs.find((e) => EXERCISE_BY_ID[e.exerciseId].pattern === 'biceps');
   const tri = exs.find((e) => EXERCISE_BY_ID[e.exerciseId].pattern === 'triceps');
   if (bi && tri) bi.superset = tri.superset = true;
-  // 2. Retirer les derniers exercices accessoires
-  while (estimateMinutes(exs) > minutes && exs.length > 4) {
-    const idx = [...exs].reverse().findIndex((e) => !EXERCISE_BY_ID[e.exerciseId].compound);
+  // 1 bis. Autres isolations en superset deux à deux (muscles différents = pas de perte de performance)
+  const iso = exs.filter((e) => !isCompound(e) && !e.superset);
+  for (let i = 0; i + 1 < iso.length && estimateMinutes(exs) > minutes; i += 2) {
+    const a = EXERCISE_BY_ID[iso[i].exerciseId].primary;
+    const b = EXERCISE_BY_ID[iso[i + 1].exerciseId].primary;
+    if (a.some((m) => b.includes(m))) continue;
+    iso[i].superset = iso[i + 1].superset = true;
+  }
+  // 2. Retirer les derniers exercices d'isolation non prioritaires
+  while (estimateMinutes(exs) > minutes && exs.length > 5) {
+    const idx = [...exs].reverse().findIndex((e) => !isCompound(e) && !e.priority);
     if (idx < 0) break;
     exs.splice(exs.length - 1 - idx, 1);
   }
-  // 3. Réduire d'une série les exercices à 4 séries puis 3
-  for (const target of [4, 3])
-    for (const e of exs) if (estimateMinutes(exs) > minutes && e.sets >= target) e.sets--;
+  // 3. Réduire les séries : isolation d'abord, les gros mouvements gardent au moins 3 séries
+  const passes: [(e: ProgramExercise) => boolean, number][] = [
+    [(e) => !isCompound(e) && !e.priority, 2],
+    [(e) => !isCompound(e) && !!e.priority, 2],
+    [(e) => isCompound(e), 3],
+  ];
+  for (const [match, floor] of passes) {
+    let changed = true;
+    while (changed && estimateMinutes(exs) > minutes) {
+      changed = false;
+      for (const e of [...exs].reverse()) {
+        if (estimateMinutes(exs) <= minutes) break;
+        if (match(e) && e.sets > floor) {
+          e.sets--;
+          changed = true;
+        }
+      }
+    }
+  }
 }
 
 export function weeklyVolume(sessions: ProgramSession[]): Program['weeklyVolume'] {
@@ -243,7 +384,9 @@ export function cardioPlan(profile: Profile, restingHr?: number): CardioPlan {
     'Objectif longévité : 150-180 min/semaine d’endurance au total (zone 2 + VO2max), le VO2max étant l’un des plus puissants prédicteurs de mortalité.',
     'Place la zone 2 loin de tes séances jambes, ou après le haut du corps. Le vélo interfère moins avec la prise de muscle que la course.',
   ];
+  const modes = (profile.cardioModes?.length ? profile.cardioModes : (['bike', 'walk'] as CardioMode[])).map((m) => MODE_LABEL[m]).join(', ');
   return {
+    modes,
     zone2: { sessions, minutes, hrLow: z2[0], hrHigh: z2[1] },
     vo2: beginner
       ? null
@@ -275,7 +418,17 @@ export interface Suggestion {
   text: string;
 }
 
-/** Double progression : on monte les reps jusqu'au haut de la fourchette, puis la charge. */
+/** Premier nombre d'un RIR cible (« 1-2 » → 1) */
+export function targetRir(rir: string): number {
+  const n = parseInt(rir, 10);
+  return Number.isNaN(n) ? 2 : n;
+}
+
+/**
+ * Double progression, affinée par l'effort ressenti (RIR) quand il est noté :
+ * trop facile → on monte la charge même sans être en haut de la fourchette ;
+ * échec sous la fourchette → on baisse la charge.
+ */
 export function suggestNext(pe: ProgramExercise, last: ExerciseLog | undefined, deload: boolean): Suggestion {
   const ex = EXERCISE_BY_ID[pe.exerciseId];
   const [lo, hi] = pe.reps;
@@ -283,9 +436,24 @@ export function suggestNext(pe: ProgramExercise, last: ExerciseLog | undefined, 
     return { reps: lo, text: `Trouve une charge qui te permet ${lo}-${hi} reps en gardant ${pe.rir.split(' ')[0]} rep(s) en réserve.` };
   const top = Math.max(...last.sets.map((s) => s.weight));
   const topSets = last.sets.filter((s) => s.weight === top);
+  const roundW = (w: number) => (ex.step ? Math.round(w / ex.step) * ex.step : w);
   if (deload) {
-    const w = ex.step ? Math.round((top * 0.9) / ex.step) * ex.step : top;
+    const w = roundW(top * 0.9);
     return { weight: w, reps: lo, text: `Décharge : ${w || 'poids du corps'}${w ? ' kg' : ''} × ${lo} reps, sans forcer.` };
+  }
+  const goal = targetRir(pe.rir);
+  const rirs = topSets.map((s) => s.rir).filter((r): r is number => r !== undefined);
+  const minReps = Math.min(...topSets.map((s) => s.reps));
+  if (ex.step && rirs.length === topSets.length) {
+    const minRir = Math.min(...rirs);
+    if (minRir >= goal + 2 && minReps >= lo) {
+      const w = top + ex.step;
+      return { weight: w, reps: lo, text: `C’était trop facile (encore ${minRir} reps en réserve) → passe à ${w} kg.` };
+    }
+    if (minReps < lo && Math.max(...rirs) === 0) {
+      const w = Math.max(ex.step, roundW(top * 0.93));
+      return { weight: w, reps: lo, text: `Échec sous ${lo} reps la dernière fois → redescends à ${w} kg et reconstruis.` };
+    }
   }
   if (topSets.every((s) => s.reps >= hi)) {
     if (ex.step) {
@@ -294,8 +462,41 @@ export function suggestNext(pe: ProgramExercise, last: ExerciseLog | undefined, 
     }
     return { weight: top, reps: hi, text: 'Toutes les séries au max : ajoute du lest (sac à dos), ralentis la descente ou passe à une variante plus dure.' };
   }
-  const minReps = Math.min(...topSets.map((s) => s.reps));
   return { weight: top, reps: Math.min(hi, minReps + 1), text: `Garde ${top || 'le poids du corps'}${top ? ' kg' : ''} et vise ${Math.min(hi, minReps + 1)}+ reps sur chaque série.` };
+}
+
+/** Stagnation : aucune amélioration du 1RM estimé sur les 3 dernières séances. */
+export function isStalled(workouts: WorkoutLog[], exerciseId: string): boolean {
+  const h = exerciseHistory(workouts, exerciseId);
+  if (h.length < 4) return false;
+  const before = Math.max(...h.slice(0, -3).map((x) => x.e1rm));
+  const recent = Math.max(...h.slice(-3).map((x) => x.e1rm));
+  return recent <= before * 1.005;
+}
+
+// ——— Forme du jour (auto-régulation) ———
+
+export function readinessScore(r: Readiness): number {
+  const avg = (r.sleep + r.energy + r.soreness + r.motivation) / 4; // 1-5
+  let score = ((avg - 1) / 4) * 100;
+  if (r.sleepHours !== undefined && r.sleepHours < 6) score -= 10;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+export type ReadinessLevel = 'go' | 'easy' | 'rest';
+
+export function readinessAdvice(score: number): { level: ReadinessLevel; title: string; text: string } {
+  if (score >= 65) return { level: 'go', title: 'Feu vert', text: 'Séance normale : va chercher ta progression.' };
+  if (score >= 40)
+    return { level: 'easy', title: 'Séance allégée', text: '1 série de moins par exercice et 1 rep de plus en réserve. Tu gardes le stimulus sans creuser la fatigue.' };
+  return { level: 'rest', title: 'Récupération', text: 'Remplace la musculation par 30-40 min de zone 2 très facile + 10 min de mobilité. Décale la séance à demain.' };
+}
+
+/** Applique la forme du jour à une séance */
+export function adjustForReadiness(session: ProgramSession, level: ReadinessLevel): ProgramSession {
+  if (level !== 'easy') return session;
+  const exercises = session.exercises.map((e) => ({ ...e, sets: Math.max(1, e.sets - 1), rir: `${targetRir(e.rir) + 1}` }));
+  return { ...session, exercises, estMinutes: estimateMinutes(exercises) };
 }
 
 /** « 3 × 8-12 » ou « 3 × 40 m » */

@@ -10,6 +10,11 @@ Application mobile (PWA installable sur iPhone et Android) qui :
 - analyse ta **prise de sang** (≈ 30 marqueurs, unités françaises g/L, plages normales et optimales) et te donne la **liste du bilan à demander** à ton médecin ;
 - propose un **protocole de compléments personnalisé** (créatine, vitamine D selon ton taux, oméga-3 selon ton menu/index, fer uniquement si ferritine basse, B12 si végétal…) avec le **niveau de preuve** de chacun ;
 - suit tes **habitudes longévité** (sommeil, lumière, pas, protéines, crème solaire, rétinoïde…) et un protocole complet intérieur & extérieur ;
+- utilise un **bilan complet** : pathologies, traitements (interactions avec les compléments), tabac, antécédents familiaux, grossesse/allaitement, horaires de lever/coucher, jours et heure d’entraînement, muscles prioritaires, cardio préféré, budget, temps de cuisine ;
+- calcule la **couverture en vitamines & minéraux** du menu (calcium, fer, magnésium, B12, vitamine D, oméga-3…) et ajuste les compléments selon ce que tu manges réellement ;
+- adapte la séance à ta **forme du jour** (sommeil, énergie, courbatures, motivation), fait progresser les charges selon l’**effort ressenti (RIR)** et détecte les **stagnations** ;
+- suit tes **mensurations** (proportions épaules/taille, méthode Navy), **tension** et **fréquence cardiaque de repos**, et tes **photos de progression** (stockées uniquement sur le téléphone) ;
+- propose ta **journée idéale** (lumière, repas, dernière caféine, écrans, coucher) calculée sur tes horaires ;
 - intègre un **coach IA** (Claude) optionnel qui connaît toutes tes données.
 
 Toutes les données restent **sur ton téléphone** (stockage local). Seuls Withings (si tu le connectes) et Anthropic (si tu actives le coach) reçoivent des données.

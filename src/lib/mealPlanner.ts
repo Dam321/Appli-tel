@@ -183,7 +183,23 @@ export function eligibleRecipes(profile: Profile, slot: Slot): ResolvedRecipe[] 
 }
 
 /** Choisit les plats principaux de la semaine en respectant les règles « longévité ». */
-function pickMains(candidates: ResolvedRecipe[], count: number, rand: () => number, canFish: boolean): ResolvedRecipe[] {
+export interface PlannerOptions {
+  /** Profil cardiovasculaire à protéger (ApoB/LDL élevés, antécédents) : moins de viande rouge et de fromage */
+  lipidFocus?: boolean;
+}
+
+const PRICEY = new Set(['salmon', 'shrimp', 'cod', 'tempeh']);
+const CHEAP = new Set(['sardines', 'eggs', 'lentils', 'chickpeas', 'chicken', 'red_beans', 'mackerel', 'tofu']);
+const SATURATED = new Set(['beef5', 'feta', 'parmesan']);
+
+function pickMains(candidates: ResolvedRecipe[], count: number, rand: () => number, canFish: boolean, profile: Profile, opts: PlannerOptions): ResolvedRecipe[] {
+  // Temps de cuisine : on garde les recettes assez rapides s'il en reste suffisamment.
+  const quick = candidates.filter((c) => c.recipe.minutes <= profile.maxCookMinutes + 5);
+  if (quick.length >= 6) candidates = quick;
+  if (opts.lipidFocus) {
+    const lean = candidates.filter((c) => !hasRedMeat(c));
+    if (lean.length >= 6) candidates = lean;
+  }
   const chosen: ResolvedRecipe[] = [];
   const uses = new Map<string, number>();
   let fish = 0;
@@ -203,6 +219,15 @@ function pickMains(candidates: ResolvedRecipe[], count: number, rand: () => numb
       if (canFish && isFattyFish(c) && fish < 2) score += 2 - fish < remaining ? 0.8 : 3;
       if (isLegume(c) && legumes < 3) score += 0.6;
       if (hasRedMeat(c)) score -= 0.3;
+      const ids = c.ingredients.map((i) => i.food);
+      if (profile.budget === 'eco') {
+        if (ids.some((f) => PRICEY.has(f))) score -= 0.6;
+        if (ids.some((f) => CHEAP.has(f))) score += 0.3;
+      }
+      if (opts.lipidFocus) {
+        if (ids.some((f) => SATURATED.has(f))) score -= 0.5;
+        if (isLegume(c)) score += 0.4;
+      }
       if (score > bestScore) {
         bestScore = score;
         best = c;
@@ -336,7 +361,12 @@ export function roundQuantity(foodId: string, g: number): { g: number; qty: stri
   return { g: gg, qty: `${gg} g` };
 }
 
-export function generateWeekPlan(profile: Profile, targets: NutritionTargets, plan: Pick<PlanState, 'mealSeed' | 'mealWeekStart' | 'mealOverrides'>): WeekPlan {
+export function generateWeekPlan(
+  profile: Profile,
+  targets: NutritionTargets,
+  plan: Pick<PlanState, 'mealSeed' | 'mealWeekStart' | 'mealOverrides'>,
+  opts: PlannerOptions = {},
+): WeekPlan {
   const rand = rng(plan.mealSeed);
   const slots = slotsFor(profile.mealsPerDay);
   const canFish = !['vegetarian', 'vegan'].includes(profile.diet) && !profile.allergens.includes('fish');
@@ -355,7 +385,7 @@ export function generateWeekPlan(profile: Profile, targets: NutritionTargets, pl
   const mains = eligibleRecipes(profile, 'main');
   const batch = profile.batchCooking;
   const mainCount = batch ? 8 : 14;
-  const mainPicks = pickMains(mains, mainCount, rand, canFish);
+  const mainPicks = pickMains(mains, mainCount, rand, canFish, profile, opts);
   const resolvedById = new Map<string, ResolvedRecipe | null>();
   const resolveOverride = (id: string | undefined) => {
     if (!id || !RECIPE_BY_ID[id]) return null;

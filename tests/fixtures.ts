@@ -1,7 +1,9 @@
+import { newProfile } from '../src/lib/profile';
 import type { Profile } from '../src/lib/types';
 
 export function makeProfile(over: Partial<Profile> = {}): Profile {
   return {
+    ...newProfile(),
     name: 'Test',
     sex: 'male',
     birthYear: 1990,

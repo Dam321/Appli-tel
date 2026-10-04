@@ -3,7 +3,8 @@ import { navigate } from '../App';
 import { Icon } from '../components/icons';
 import { LineChart } from '../components/LineChart';
 import { Badge, Card, Field, NumberInput, Segmented, Sheet, Stat } from '../components/ui';
-import { fatCategory, ffmiCategory, latestValues, normalizeMeasurement, targetFatRange, trendSeries, type NumericField } from '../lib/bodyComp';
+import { bpCategory, fatCategory, ffmiCategory, latestValues, normalizeMeasurement, proportions, restingHrCategory, targetFatRange, trendSeries, type NumericField } from '../lib/bodyComp';
+import { ProgressPhotos } from '../components/ProgressPhotos';
 import { parseWeightCsv } from '../lib/csvImport';
 import type { Measurement } from '../lib/types';
 import { addDays, dayKey, fmt, formatDay, todayISO, uid } from '../lib/util';
@@ -19,6 +20,7 @@ export function Body() {
   const [range, setRange] = useState<Range>(90);
   const [adding, setAdding] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const [taping, setTaping] = useState(false);
   const { sync, busy, connected } = useWithingsSync();
 
   const ms = useMemo(() => state.measurements.map(normalizeMeasurement), [state.measurements]);
@@ -67,6 +69,9 @@ export function Body() {
             : 'Tu es dans la zone cible : l’objectif est maintenant de construire du muscle en restant sec.'}
         </p>
       </Card>
+
+      <MeasuresCard onAdd={() => setTaping(true)} />
+      <ProgressPhotos />
 
       <Card
         title="Balance Withings"
@@ -155,6 +160,7 @@ export function Body() {
       </Card>
 
       {adding && <AddMeasurement onClose={() => setAdding(false)} />}
+      {taping && <AddTape onClose={() => setTaping(false)} />}
     </>
   );
 }
@@ -191,6 +197,160 @@ function AddMeasurement({ onClose }: { onClose: () => void }) {
             <NumberInput value={m.waistCm} onChange={set('waistCm')} unit="cm" />
           </Field>
         </div>
+        <button className="btn primary block" onClick={save}>
+          Enregistrer
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+function MeasuresCard({ onAdd }: { onAdd: () => void }) {
+  const { state, derived } = useApp();
+  const { profile, snap } = derived;
+  const ms = state.measurements;
+  const l = latestValues(ms);
+  const prop = proportions(profile.sex, profile.heightCm, ms);
+  const bp = l.systolic && l.diastolic ? bpCategory(l.systolic.value, l.diastolic.value) : undefined;
+  const rhr = l.restingHr ?? l.heartRate;
+  const rhrCat = rhr ? restingHrCategory(rhr.value) : undefined;
+  const tape: [string, number | undefined][] = [
+    ['Cou', l.neckCm?.value],
+    ['Épaules', l.shouldersCm?.value],
+    ['Poitrine', l.chestCm?.value],
+    ['Taille', l.waistCm?.value],
+    ['Hanches', l.hipCm?.value],
+    ['Bras (contracté)', l.armCm?.value],
+    ['Cuisse', l.thighCm?.value],
+  ];
+  const hasTape = tape.some(([, v]) => v !== undefined);
+  return (
+    <Card
+      title="Mensurations & santé cardio"
+      sub="Le mètre ruban et la tension complètent la balance"
+      action={
+        <button className="btn sm" onClick={onAdd}>
+          <Icon.plus /> Saisir
+        </button>
+      }
+    >
+      {hasTape ? (
+        <div className="row wrap" style={{ gap: 6 }}>
+          {tape
+            .filter(([, v]) => v !== undefined)
+            .map(([k, v]) => (
+              <Badge key={k}>
+                {k} {fmt(v, 1)} cm
+              </Badge>
+            ))}
+        </div>
+      ) : (
+        <p className="small text-2" style={{ marginTop: 0 }}>
+          Mesure cou, épaules, taille et hanches une fois par mois : l’app en déduit tes proportions et recoupe ton % de gras.
+        </p>
+      )}
+      <div className="list" style={{ marginTop: 8 }}>
+        {prop.shoulderToWaist && (
+          <div className="list-item">
+            <div className="main">
+              <div className="title">Ratio épaules / taille (silhouette en V)</div>
+              <div className="sub">Idéal esthétique {prop.shoulderToWaist.target} : épaules larges, taille fine</div>
+            </div>
+            <Badge tone={prop.shoulderToWaist.ok ? 'good' : 'warning'}>{fmt(prop.shoulderToWaist.value, 2)}</Badge>
+          </div>
+        )}
+        {prop.waistToHip && (
+          <div className="list-item">
+            <div className="main">
+              <div className="title">Ratio taille / hanches</div>
+              <div className="sub">Marqueur de graisse abdominale, cible {prop.waistToHip.target}</div>
+            </div>
+            <Badge tone={prop.waistToHip.ok ? 'good' : 'warning'}>{fmt(prop.waistToHip.value, 2)}</Badge>
+          </div>
+        )}
+        {prop.navyFatPct !== undefined && (
+          <div className="list-item">
+            <div className="main">
+              <div className="title">% de gras au mètre ruban (méthode Navy)</div>
+              <div className="sub">À comparer à la balance ({fmt(snap.fatPct)} %) : la vérité est souvent entre les deux</div>
+            </div>
+            <Badge>{fmt(prop.navyFatPct)} %</Badge>
+          </div>
+        )}
+        {bp && (
+          <div className="list-item">
+            <div className="main">
+              <div className="title">
+                Tension {l.systolic!.value}/{l.diastolic!.value} mmHg
+              </div>
+              <div className="sub">Objectif longévité : moins de 120/80</div>
+            </div>
+            <Badge tone={bp.tone === 'neutral' ? 'neutral' : bp.tone}>{bp.label}</Badge>
+          </div>
+        )}
+        {rhr && rhrCat && (
+          <div className="list-item">
+            <div className="main">
+              <div className="title">Fréquence cardiaque {l.restingHr ? 'de repos' : '(balance, debout)'} : {Math.round(rhr.value)} bpm</div>
+              <div className="sub">Elle baisse quand ton cardio progresse</div>
+            </div>
+            <Badge tone={rhrCat.tone === 'neutral' ? 'neutral' : rhrCat.tone}>{rhrCat.label}</Badge>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function AddTape({ onClose }: { onClose: () => void }) {
+  const { update, toast } = useApp();
+  const [m, setM] = useState<Partial<Measurement>>({});
+  const [date, setDate] = useState(todayISO());
+  const set = (k: keyof Measurement) => (v: number | undefined) => setM((x) => ({ ...x, [k]: v }));
+  const save = () => {
+    if (!Object.values(m).some((v) => v !== undefined)) return;
+    const entry: Measurement = { ...m, id: uid(), date: new Date(`${date}T08:00`).toISOString(), source: 'manual' };
+    update((s) => ({ ...s, measurements: mergeMeasurements(s.measurements, [entry]).list }));
+    toast('Mensurations enregistrées');
+    onClose();
+  };
+  const fields: [keyof Measurement, string, string][] = [
+    ['neckCm', 'Cou', 'Sous la pomme d’Adam'],
+    ['shouldersCm', 'Épaules', 'Tour complet, au plus large'],
+    ['chestCm', 'Poitrine', 'Au niveau des mamelons, expiré'],
+    ['waistCm', 'Taille', 'Au nombril, relâché'],
+    ['hipCm', 'Hanches', 'Au plus large des fessiers'],
+    ['armCm', 'Bras', 'Biceps contracté, au plus large'],
+    ['thighCm', 'Cuisse', 'Sous le pli fessier'],
+  ];
+  return (
+    <Sheet title="Mensurations & cardio" onClose={onClose}>
+      <div className="stack" style={{ gap: 12 }}>
+        <Field label="Date">
+          <input className="input" type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} />
+        </Field>
+        <div className="grid2">
+          {fields.map(([k, label, hint]) => (
+              <Field key={k} label={label} hint={hint}>
+                <NumberInput value={m[k] as number | undefined} onChange={set(k)} unit="cm" />
+              </Field>
+            ))}
+        </div>
+        <div className="section-title">Cardio (optionnel)</div>
+        <div className="grid3">
+          <Field label="FC repos" hint="Au réveil, couché">
+            <NumberInput value={m.restingHr} onChange={set('restingHr')} unit="bpm" step={1} />
+          </Field>
+          <Field label="Tension sys.">
+            <NumberInput value={m.systolic} onChange={set('systolic')} step={1} />
+          </Field>
+          <Field label="Tension dia.">
+            <NumberInput value={m.diastolic} onChange={set('diastolic')} step={1} />
+          </Field>
+        </div>
+        <p className="small muted" style={{ margin: 0 }}>
+          Tension : assis, au calme depuis 5 min, 3 mesures le matin, garde la moyenne.
+        </p>
         <button className="btn primary block" onClick={save}>
           Enregistrer
         </button>

@@ -3,6 +3,7 @@
 //   A = preuves solides (méta-analyses d'essais randomisés)
 //   B = preuves modérées / bénéfice probable
 //   C = préliminaire, expérimental
+import type { MicroKey } from '../data/micros';
 import type { Profile } from './types';
 
 export type SuppStatus = 'essential' | 'recommended' | 'conditional' | 'optional' | 'not_needed' | 'avoid';
@@ -48,6 +49,9 @@ export interface SuppContext {
   avgFiber?: number;
   usesProteinPowder?: boolean;
   month: number;
+  /** Apports moyens du menu (par jour) et références, pour décider selon ce que tu manges vraiment */
+  micros?: Record<MicroKey, number>;
+  microRefs?: Record<MicroKey, number>;
 }
 
 const isWinter = (m: number) => m >= 9 || m <= 3; // octobre → avril (0 = janvier)
@@ -438,8 +442,244 @@ export function supplementPlan(ctx: SuppContext): SupplementRec[] {
     category: 'performance',
   });
 
-  const order: SuppStatus[] = ['essential', 'recommended', 'conditional', 'optional', 'not_needed', 'avoid'];
-  return out.sort((a, c) => order.indexOf(a.status) - order.indexOf(c.status));
+  personalize(out, ctx);
+  return out.sort((a, c) => ORDER.indexOf(a.status) - ORDER.indexOf(c.status));
+}
+
+const ORDER: SuppStatus[] = ['essential', 'recommended', 'conditional', 'optional', 'not_needed', 'avoid'];
+
+function raise(r: SupplementRec | undefined, status: SuppStatus, why?: string) {
+  if (!r || r.status === 'avoid') return;
+  if (ORDER.indexOf(status) < ORDER.indexOf(r.status)) r.status = status;
+  if (why) r.why = `${why} ${r.why}`;
+}
+
+function forbid(r: SupplementRec | undefined, why: string) {
+  if (!r) return;
+  r.status = 'avoid';
+  r.cautions = r.cautions ? `${why} ${r.cautions}` : why;
+}
+
+/**
+ * Couche de personnalisation appliquée après les règles de base :
+ * apports réels du menu, puis santé / médicaments / grossesse (la sécurité a le
+ * dernier mot), puis budget.
+ */
+function personalize(out: SupplementRec[], ctx: SuppContext) {
+  const p = ctx.profile;
+  const get = (id: string) => out.find((r) => r.id === id);
+  const has = (c: Profile['conditions'][number]) => p.conditions.includes(c);
+  const takes = (m: Profile['medications'][number]) => p.medications.includes(m);
+  const pregnant = p.femaleStatus === 'pregnant';
+  const lactating = p.femaleStatus === 'breastfeeding';
+  const pct = (k: MicroKey) => (ctx.micros && ctx.microRefs ? ctx.micros[k] / ctx.microRefs[k] : undefined);
+
+  // ——— 1. Ce que le menu apporte réellement ———
+  const o3 = ctx.micros?.omega3;
+  const omega = get('omega3');
+  if (omega && o3 !== undefined && ctx.blood.omega3_index === undefined) {
+    if (o3 >= 500 && omega.status === 'recommended') {
+      omega.status = 'optional';
+      omega.why = `Ton menu apporte déjà ~${Math.round(o3)} mg d’EPA+DHA par jour (référence 500 mg). ${omega.why}`;
+    } else if (o3 < 250) raise(omega, 'recommended', `Ton menu n’apporte que ~${Math.round(o3)} mg d’EPA+DHA par jour.`);
+  }
+  const mgPct = pct('mg');
+  const mag = get('magnesium');
+  if (mag && mgPct !== undefined) {
+    if (mgPct < 0.8) raise(mag, 'recommended', `Ton menu couvre ~${Math.round(mgPct * 100)} % du magnésium recommandé.`);
+    else if (ctx.blood.magnesium === undefined && mag.status === 'recommended') {
+      mag.status = 'optional';
+      mag.why = `Ton menu couvre ~${Math.round(mgPct * 100)} % du magnésium : utile seulement pour le sommeil ou les crampes. ${mag.why}`;
+    }
+  }
+  const b12Pct = pct('b12');
+  if (b12Pct !== undefined && b12Pct < 0.6 && p.diet !== 'vegan') raise(get('b12'), 'recommended', `Ton menu couvre ~${Math.round(b12Pct * 100)} % de la B12.`);
+
+  const caPct = pct('ca');
+  if ((caPct !== undefined && caPct < 0.7) || has('osteoporosis'))
+    out.push({
+      id: 'calcium',
+      name: 'Calcium (citrate)',
+      status: 'recommended',
+      evidence: 'B',
+      dose: '500 mg/jour en plus de l’alimentation (pas plus)',
+      timing: ['repas'],
+      form: 'Citrate de calcium ; priorité aux aliments (laitages, tofu au calcium, eaux riches en calcium type Hépar/Contrex)',
+      why: has('osteoporosis')
+        ? 'Ostéoporose / ostéopénie : calcium + vitamine D + musculation lourde (stimulus osseux).'
+        : `Ton menu couvre ~${Math.round((caPct ?? 0) * 100)} % du calcium recommandé.`,
+      cautions: 'À 4 h de la lévothyroxine et à 2 h du fer et du zinc.',
+      costPerMonth: 4,
+      category: 'santé',
+    });
+
+  // ——— 2. Médicaments ———
+  if (takes('metformin') || takes('ppi'))
+    raise(get('b12'), 'recommended', takes('metformin') ? 'La metformine diminue l’absorption de la B12 (à doser une fois par an).' : 'Les anti-acides (IPP) diminuent l’absorption de la B12.');
+  if (takes('ppi')) raise(get('magnesium'), 'recommended', 'Les IPP au long cours peuvent faire baisser le magnésium.');
+  if (takes('anticoagulant')) {
+    const d = get('vitd');
+    if (d) {
+      d.name = 'Vitamine D3 (sans K2)';
+      d.form = 'D3 seule : la vitamine K2 interfère avec les anticoagulants de type AVK (warfarine, fluindione).';
+    }
+    if (omega && omega.status !== 'avoid') {
+      omega.status = 'conditional';
+      omega.dose = 'Max 1 g d’EPA+DHA/jour, avec l’accord de ton médecin';
+      omega.cautions = 'Anticoagulant : risque de saignement accru à forte dose.';
+    }
+    forbid(get('berberine'), 'Interaction avec les anticoagulants.');
+  }
+  if (takes('thyroid_med')) {
+    forbid(get('ashwagandha'), 'Modifie les hormones thyroïdiennes.');
+    forbid(get('iodine'), 'Sous traitement thyroïdien, pas d’iode sans avis de l’endocrinologue.');
+    for (const id of ['iron', 'calcium', 'magnesium', 'zinc']) {
+      const r = get(id);
+      if (r) r.cautions = `${r.cautions ? r.cautions + ' ' : ''}À prendre au moins 4 h après la lévothyroxine.`;
+    }
+  }
+  if (takes('antidepressant')) {
+    const a = get('ashwagandha');
+    if (a) a.cautions = `${a.cautions ?? ''} Sous antidépresseur : uniquement avec l’accord de ton médecin.`.trim();
+  }
+  if (takes('metformin')) forbid(get('berberine'), 'Fait doublon avec la metformine (risque d’hypoglycémie).');
+  if (takes('statin'))
+    out.push({
+      id: 'coq10',
+      name: 'Coenzyme Q10',
+      status: 'optional',
+      evidence: 'C',
+      dose: '100-200 mg/jour',
+      timing: ['repas'],
+      form: 'Ubiquinol ou ubiquinone, avec un repas gras',
+      why: 'Les statines baissent la CoQ10 ; à essayer seulement en cas de douleurs musculaires (résultats des essais mitigés).',
+      cautions: 'Évite la levure de riz rouge : c’est la même molécule qu’une statine.',
+      costPerMonth: 15,
+      category: 'santé',
+    });
+
+  // ——— 3. Maladies ———
+  if (has('kidney')) {
+    forbid(get('creatine'), 'Maladie rénale : pas de créatine.');
+    forbid(get('magnesium'), 'Maladie rénale : le magnésium s’accumule.');
+    forbid(get('beta_alanine'), 'Maladie rénale : pas de compléments de performance sans avis médical.');
+  }
+  if (has('liver')) {
+    forbid(get('ashwagandha'), 'Maladie du foie : de rares atteintes hépatiques sont décrites.');
+    forbid(get('berberine'), 'Maladie du foie : avis médical indispensable.');
+  }
+  if (has('thyroid')) {
+    forbid(get('ashwagandha'), 'Pathologie thyroïdienne.');
+    const io = get('iodine');
+    if (io) forbid(io, 'Pathologie thyroïdienne : iode uniquement sur avis médical.');
+  }
+  if (has('high_cholesterol')) raise(get('psyllium'), 'recommended', 'Cholestérol élevé : le psyllium baisse le LDL de 7-10 %.');
+  if (has('diabetes') || has('prediabetes')) raise(get('psyllium'), 'recommended', 'Glycémie : les fibres solubles réduisent les pics de sucre après les repas.');
+  if (has('hypertension') || has('heart')) {
+    const c = get('caffeine');
+    if (c) {
+      c.status = 'not_needed';
+      c.cautions = 'Tension / cœur : pas de caféine en complément, 1-2 cafés/jour maximum.';
+    }
+  }
+
+  // ——— 4. Grossesse & allaitement ———
+  if (pregnant || lactating) {
+    for (const id of ['creatine', 'beta_alanine', 'ashwagandha', 'berberine', 'urolithin_a', 'taurine', 'glycine', 'collagen', 'coq10'])
+      forbid(get(id), pregnant ? 'Grossesse : sécurité non démontrée.' : 'Allaitement : sécurité non démontrée.');
+    const c = get('caffeine');
+    if (c) {
+      c.status = 'not_needed';
+      c.dose = '200 mg de caféine par jour maximum (≈ 2 cafés), toutes sources confondues';
+    }
+    out.push({
+      id: 'folate',
+      name: 'Folates (vitamine B9)',
+      status: 'essential',
+      evidence: 'A',
+      dose: '400 µg/jour (dose plus forte si prescrite)',
+      timing: ['matin'],
+      form: 'Acide folique ou méthylfolate, souvent dans un complexe prénatal',
+      why: 'Prévient les anomalies du tube neural ; idéalement commencé avant la conception.',
+      costPerMonth: 4,
+      category: 'santé',
+    });
+    if (!get('iodine') && !has('thyroid') && !takes('thyroid_med'))
+      out.push({
+        id: 'iodine',
+        name: 'Iode',
+        status: 'recommended',
+        evidence: 'B',
+        dose: '150 µg/jour',
+        timing: ['matin'],
+        form: 'Dans un complexe prénatal',
+        why: 'Besoins augmentés pendant la grossesse et l’allaitement (développement du cerveau du bébé).',
+        costPerMonth: 3,
+        category: 'santé',
+      });
+    if (omega && omega.status !== 'avoid') {
+      raise(omega, 'recommended');
+      omega.dose = '200-300 mg de DHA/jour au minimum';
+      omega.form = 'Huile de poisson purifiée (certifiée sans métaux lourds) ou huile d’algues';
+    }
+  } else if (p.sex === 'female' && p.femaleStatus === 'cycle') {
+    out.push({
+      id: 'folate',
+      name: 'Folates (vitamine B9)',
+      status: 'optional',
+      evidence: 'A',
+      dose: '400 µg/jour',
+      timing: ['matin'],
+      form: 'Acide folique ou méthylfolate',
+      why: 'Uniquement en cas de projet de grossesse : à démarrer 1 mois avant la conception.',
+      costPerMonth: 4,
+      category: 'santé',
+    });
+  }
+
+  // ——— 5. Tabac ———
+  if (p.smoking === 'current')
+    out.push({
+      id: 'beta_carotene',
+      name: 'Bêta-carotène en complément',
+      status: 'avoid',
+      evidence: 'A',
+      dose: '—',
+      timing: ['repas'],
+      form: '—',
+      why: 'Chez les fumeurs, les compléments de bêta-carotène augmentent le risque de cancer du poumon (essais ATBC et CARET). Les carottes et légumes, eux, sont bénéfiques.',
+      category: 'santé',
+    });
+
+  // ——— 6. Séance du soir : pas de caféine ———
+  const caf = get('caffeine');
+  if (caf && caf.status === 'optional' && p.trainingTime === 'evening') {
+    caf.status = 'not_needed';
+    caf.why = `Tu t’entraînes le soir : la caféine avant la séance abîmerait ton sommeil. ${caf.why}`;
+  }
+
+  // ——— 7. Budget ———
+  if (p.budget === 'eco')
+    for (const r of out)
+      if (r.status === 'optional' && (r.costPerMonth ?? 0) >= 8) {
+        r.status = 'not_needed';
+        r.why = `Budget serré : on garde l’argent pour les essentiels. ${r.why}`;
+      }
+}
+
+/** Points d'attention généraux liés aux traitements, affichés en tête des compléments */
+export function medicationWarnings(p: Profile): string[] {
+  const w: string[] = [];
+  if (p.medications.includes('thyroid_med')) w.push('Lévothyroxine : prends-la à jeun, puis attends 30-60 min pour le café et 4 h pour le fer, le calcium, le magnésium et le soja.');
+  if (p.medications.includes('anticoagulant')) w.push('Anticoagulant : pas de K2, pas d’oméga-3 > 1 g, de curcuma concentré ni de ginkgo sans avis médical. Garde des apports en légumes verts réguliers (vitamine K) si tu es sous AVK.');
+  if (p.medications.includes('antidepressant')) w.push('Antidépresseur : évite millepertuis, 5-HTP, tryptophane et SAMe (risque de syndrome sérotoninergique).');
+  if (p.medications.includes('antihypertensive')) w.push('Antihypertenseur (IEC, sartans, spironolactone) : pas de complément de potassium ni de sel de régime au potassium.');
+  if (p.medications.includes('statin')) w.push('Statine : pas de levure de riz rouge ; selon la statine, évite le jus de pamplemousse en grande quantité.');
+  if (p.medications.includes('metformin')) w.push('Metformine : fais doser la B12 une fois par an.');
+  if (p.medications.includes('ppi')) w.push('IPP (anti-acide) au long cours : B12, magnésium et fer moins bien absorbés, à surveiller.');
+  if (p.femaleStatus === 'pregnant' || p.femaleStatus === 'breastfeeding') w.push('Grossesse / allaitement : montre cette liste à ta sage-femme ou ton médecin avant de commencer quoi que ce soit.');
+  if (p.conditions.includes('kidney') || p.conditions.includes('liver')) w.push('Maladie rénale ou hépatique : chaque complément doit être validé par ton spécialiste.');
+  return w;
 }
 
 export function activeStack(recs: SupplementRec[]): SupplementRec[] {

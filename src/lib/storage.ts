@@ -1,5 +1,6 @@
 // Persistance locale (le téléphone). Aucune donnée de santé ne quitte l'appareil,
 // sauf vers Withings (synchro) et l'API Claude (coach) si tu les actives.
+import { upgradeProfile } from './profile';
 import type { AppState } from './types';
 import { mondayOf, todayISO } from './util';
 
@@ -30,6 +31,7 @@ export function defaultState(): AppState {
     },
     settings: { theme: 'auto' },
     coach: [],
+    photos: [],
   };
 }
 
@@ -49,6 +51,8 @@ export function migrate(raw: unknown): AppState {
     cardio: s.cardio ?? [],
     daily: s.daily ?? {},
     coach: s.coach ?? [],
+    photos: s.photos ?? [],
+    profile: s.profile ? upgradeProfile(s.profile) : undefined,
     version: STATE_VERSION,
   };
 }

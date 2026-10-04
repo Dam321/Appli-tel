@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { isValidElement, useEffect, useState, type ReactNode } from 'react';
 import { Icon } from './icons';
 
 export type Tone = 'good' | 'warning' | 'serious' | 'critical' | 'accent' | 'neutral';
@@ -73,6 +73,17 @@ export function Segmented<T extends string | number>({ value, options, onChange 
 }
 
 export function Field({ label, hint, children }: { label: ReactNode; hint?: ReactNode; children: ReactNode }) {
+  // Un <label> autour d'un groupe de boutons ferait « cliquer » le premier bouton quand
+  // on touche le titre : pour les groupes (puces, segments), on utilise un groupe ARIA.
+  const isGroup = isValidElement(children) && (children.type === Chips || children.type === Segmented || children.type === 'div');
+  if (isGroup)
+    return (
+      <div className="field" role="group" aria-label={typeof label === 'string' ? label : undefined}>
+        <span>{label}</span>
+        {children}
+        {hint && <div className="hint">{hint}</div>}
+      </div>
+    );
   return (
     <label className="field">
       <span>{label}</span>

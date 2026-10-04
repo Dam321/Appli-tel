@@ -5,7 +5,7 @@ import { Badge, Callout, Card, ConfirmButton, Evidence, Field, NumberInput, Segm
 import { CATEGORIES, derivedMetrics, formatRange, markerStatus, MARKERS, prescriptionText, STATUS_LABEL, type Marker, type MarkerStatus } from '../lib/blood';
 import { latestValues } from '../lib/bodyComp';
 import { cooperVo2, longevityProtocol, vo2Category } from '../lib/longevity';
-import { dailySchedule, STATUS_INFO, TIMING_LABEL, type SupplementRec } from '../lib/supplements';
+import { dailySchedule, medicationWarnings, STATUS_INFO, TIMING_LABEL, type SupplementRec } from '../lib/supplements';
 import { fmt, formatDay, todayISO, uid } from '../lib/util';
 import { useApp } from '../store';
 
@@ -42,8 +42,14 @@ function Supplements() {
   const { stack, supplements } = derived;
   const cost = stack.reduce((a, s) => a + (s.costPerMonth ?? 0), 0);
   const others = supplements.filter((s) => !stack.includes(s));
+  const warnings = medicationWarnings(derived.profile);
   return (
     <>
+      {warnings.length > 0 && (
+        <Callout tone="critical" title="Tes traitements : points d’attention">
+          {warnings.join(' ')}
+        </Callout>
+      )}
       {state.bloodPanels.length === 0 && (
         <Callout tone="warning" title="Protocole provisoire" action={<button className="btn sm" onClick={() => navigate('health', 'blood')}>Prise de sang</button>}>
           Sans prise de sang, les doses sont prudentes. Saisis tes résultats pour un protocole vraiment personnalisé (vitamine D, fer, B12, oméga-3…).

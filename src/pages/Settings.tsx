@@ -8,7 +8,7 @@ import { authorizeUrl, redirectUri } from '../lib/withings';
 import { useApp } from '../store';
 import { useWithingsSync } from '../withingsSync';
 import { INSTALLED_APP_URL, IS_ARTIFACT } from '../env';
-import { FoodStep, GoalStep, IdentityStep, RecoveryStep, TrainingStep } from './ProfileForm';
+import { FoodStep, GoalStep, HealthStep, IdentityStep, RecoveryStep, RhythmStep, TrainingStep } from './ProfileForm';
 
 function Section({ title, children, open }: { title: string; children: ReactNode; open?: boolean }) {
   return (
@@ -188,6 +188,12 @@ export function Settings({ oauthError }: { oauthError: string | null }) {
       </Section>
       <Section title="Entraînement & matériel">
         <TrainingStep p={p} set={set} />
+      </Section>
+      <Section title="Rythme, jours & muscles prioritaires">
+        <RhythmStep p={p} set={set} />
+      </Section>
+      <Section title="Santé, traitements & antécédents">
+        <HealthStep p={p} set={set} />
       </Section>
       <Section title="Alimentation">
         <FoodStep p={p} set={set} />

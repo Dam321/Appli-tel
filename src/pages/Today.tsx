@@ -1,15 +1,17 @@
 import { navigate } from '../App';
 import { Icon } from '../components/icons';
 import { InstallCard } from '../components/InstallCard';
+import { ProfileUpgrade } from '../components/ProfileUpgrade';
+import { ReadinessCard } from '../components/ReadinessCard';
 import { Badge, Callout, Card, Check, Meter, Ring, Stat } from '../components/ui';
-import { daysSinceLastWeighIn, fatCategory, trendSeries } from '../lib/bodyComp';
-import { dayScore, streak } from '../lib/longevity';
+import { daysSinceLastWeighIn, fatCategory, normalizeMeasurement, trendSeries, weeklyRate } from '../lib/bodyComp';
+import { dayScore, dayTimeline, streak } from '../lib/longevity';
 import { SLOT_LABEL } from '../lib/mealPlanner';
 import { weeklyCheckIn } from '../lib/nutrition';
 import { dailySchedule, TIMING_LABEL } from '../lib/supplements';
-import { sessionForDate } from '../lib/training';
+import { adjustForReadiness, readinessAdvice, readinessScore, sessionForDate } from '../lib/training';
 import type { AppState, DailyLog } from '../lib/types';
-import { daysBetween, fmt, formatDay, todayISO, weekdayIndex } from '../lib/util';
+import { addDays, daysBetween, fmt, formatDay, todayISO, weekdayIndex } from '../lib/util';
 import { useApp } from '../store';
 import { IS_ARTIFACT } from '../env';
 
@@ -23,7 +25,10 @@ export function Today() {
   const today = todayISO();
   const log = state.daily[today] ?? { habits: {}, meals: {} };
   const dayPlan = week.days[weekdayIndex(today)];
-  const session = sessionForDate(program, today);
+  const baseSession = sessionForDate(program, today);
+  const readiness = state.daily[today]?.readiness;
+  const advice = readiness ? readinessAdvice(readinessScore(readiness)) : undefined;
+  const session = baseSession && advice ? adjustForReadiness(baseSession, advice.level) : baseSession;
   const schedule = program.schedule[weekdayIndex(today)];
   const score = dayScore(log, habits);
   const st = streak(state.daily, habits);
@@ -39,7 +44,22 @@ export function Today() {
   const dataDays = series.length ? daysBetween(series[0].day, series[series.length - 1].day) : 0;
   const lastCheck = state.plan.lastCheckIn;
   const checkDue = (!lastCheck || daysBetween(lastCheck, today) >= 7) && dataDays >= 10;
-  const check = weeklyCheckIn(targets, snap.weeklyRateKg, dataDays);
+  // Adhérence : repas cochés sur les 7 derniers jours (si tu utilises les cases)
+  const last7 = Array.from({ length: 7 }, (_, i) => state.daily[addDays(today, -i - 1)]);
+  const checkedMeals = last7.reduce((a, d) => a + Object.values(d?.meals ?? {}).filter(Boolean).length, 0);
+  const mealAdherence = checkedMeals > 0 ? Math.min(1, checkedMeals / (7 * profile.mealsPerDay)) : undefined;
+  const ms = state.measurements.map(normalizeMeasurement);
+  const leanSeries = trendSeries(ms, ms.some((m) => m.muscleMassKg !== undefined) ? 'muscleMassKg' : 'leanMassKg', 0.15);
+  const check = weeklyCheckIn(targets, snap.weeklyRateKg, dataDays, {
+    mealAdherence,
+    leanRateKg: dataDays >= 21 ? weeklyRate(leanSeries) : undefined,
+    fatRatePts: dataDays >= 21 ? weeklyRate(trendSeries(ms, 'fatPct', 0.15)) : undefined,
+  });
+  const timeline = dayTimeline(profile, {
+    training: session ? session.name : schedule.cardio === 'zone2' || schedule.cardio === 'vo2max' ? schedule.label : undefined,
+    morningSupps: stack.filter((x) => x.timing[0] === 'matin').map((x) => x.name),
+    eveningSupps: stack.filter((x) => x.timing[0] === 'soir').map((x) => x.name),
+  });
   const noWeighIn = daysSinceLastWeighIn(state.measurements);
   const cat = fatCategory(profile.sex, snap.fatPct);
 
@@ -70,6 +90,7 @@ export function Today() {
       </div>
 
       <InstallCard />
+      <ProfileUpgrade />
       {!IS_ARTIFACT && !state.settings.withings?.refreshToken && (
         <Callout title="Connecte ta balance Withings" action={<button className="btn sm primary" onClick={() => navigate('settings')}>Connecter</button>}>
           Tes pesées et ta composition corporelle arriveront automatiquement, et ton plan s’ajustera tout seul.
@@ -117,9 +138,17 @@ export function Today() {
         <Stat label="Objectif du jour" value={targets.kcal} unit="kcal" delta={`${targets.protein} g de protéines`} />
       </div>
 
+      <ReadinessCard trainingToday={!!baseSession} />
+
       <Card
         title={session ? session.name : schedule.label}
-        sub={session ? `${session.exercises.length} exercices · ~${session.estMinutes} min · semaine ${program.week}/5` : 'Pas de musculation aujourd’hui'}
+        sub={
+          advice?.level === 'rest' && baseSession
+            ? 'Forme basse : récupération active conseillée aujourd’hui'
+            : session
+              ? `${session.exercises.length} exercices · ~${session.estMinutes} min · semaine ${program.week}/5${advice?.level === 'easy' ? ' · version allégée' : ''}`
+              : 'Pas de musculation aujourd’hui'
+        }
         action={
           session ? (
             <button className="btn primary sm" onClick={() => navigate('training', `log-${session.id}`)}>
@@ -209,6 +238,20 @@ export function Today() {
               sub={h.id === 'steps' && log.steps !== undefined ? `${log.steps.toLocaleString('fr-FR')} pas (Withings)` : h.detail}
             />
           ))}
+      </Card>
+
+      <Card title="Ta journée idéale" sub={`Calculée sur ton lever (${profile.wakeTime}) et ton coucher (${profile.bedTime})`}>
+        <div className="list">
+          {timeline.map((t) => (
+            <div key={t.time + t.label} className="list-item" style={{ alignItems: 'flex-start' }}>
+              <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', minWidth: 48 }}>{t.time}</span>
+              <div className="main">
+                <div className="title">{t.label}</div>
+                {t.detail && <div className="sub">{t.detail}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
       </Card>
     </>
   );

@@ -1,7 +1,9 @@
 // Formulaires du profil, partagés entre l'accueil (onboarding) et les réglages.
 import { FOODS } from '../data/foods';
 import { Chips, Field, NumberInput, Segmented, Toggle } from '../components/ui';
-import type { ActivityLevel, Allergen, Diet, Equipment, Experience, Goal, Injury, Profile } from '../lib/types';
+import { plannedSleepHours } from '../lib/profile';
+import type { ActivityLevel, Allergen, Budget, CardioMode, Condition, Diet, Equipment, Experience, FamilyHistory, Goal, Injury, Medication, MusclePriority, Profile, TrainingTime } from '../lib/types';
+import { WEEKDAYS_SHORT } from '../lib/util';
 
 type Props = { p: Profile; set: (patch: Partial<Profile>) => void };
 
@@ -188,6 +190,20 @@ export function FoodStep({ p, set }: Props) {
         <Segmented value={p.mealsPerDay} onChange={(mealsPerDay) => set({ mealsPerDay })} options={[3, 4, 5].map((n) => ({ value: n as 3 | 4 | 5, label: n === 3 ? '3 repas' : n === 4 ? '3 + collation' : '3 + 2 collations' }))} />
       </Field>
       <Toggle label="Cuisiner en double le soir" sub="Le dîner sert aussi de déjeuner le lendemain : moins de cuisine, liste de courses plus simple." checked={p.batchCooking} onChange={(batchCooking) => set({ batchCooking })} />
+      <Field label="Temps de cuisine max par repas">
+        <Segmented value={p.maxCookMinutes} onChange={(maxCookMinutes) => set({ maxCookMinutes })} options={[15, 20, 30, 45].map((n) => ({ value: n, label: `${n} min` }))} />
+      </Field>
+      <Field label="Budget courses & compléments">
+        <Segmented<Budget>
+          value={p.budget}
+          onChange={(budget) => set({ budget })}
+          options={[
+            { value: 'eco', label: 'Serré' },
+            { value: 'standard', label: 'Normal' },
+            { value: 'premium', label: 'Sans limite' },
+          ]}
+        />
+      </Field>
       <div className="grid2">
         <Field label="Poissons gras / semaine">
           <NumberInput value={p.fattyFishPerWeek} onChange={(v) => set({ fattyFishPerWeek: v ?? 0 })} step={1} min={0} />
@@ -244,30 +260,143 @@ export function RecoveryStep({ p, set }: Props) {
   );
 }
 
-export function newProfile(): Profile {
-  return {
-    name: '',
-    sex: 'male',
-    birthYear: new Date().getFullYear() - 35,
-    heightCm: 178,
-    weightKg: 80,
-    goal: 'auto',
-    experience: 'intermediate',
-    activityLevel: 'light',
-    trainingDays: 4,
-    sessionMinutes: 60,
-    equipment: ['machines', 'barbell', 'dumbbells', 'bench', 'pullup_bar', 'bands'],
-    injuries: [],
-    diet: 'omnivore',
-    allergens: [],
-    dislikedFoods: [],
-    mealsPerDay: 4,
-    batchCooking: true,
-    sleepQuality: 2,
-    stressLevel: 3,
-    fattyFishPerWeek: 1,
-    alcoholPerWeek: 0,
-    sunExposure: 'low',
-    createdAt: new Date().toISOString(),
-  };
+export { newProfile } from '../lib/profile';
+
+const CONDITIONS: { value: Condition; label: string }[] = [
+  { value: 'hypertension', label: 'Tension élevée' },
+  { value: 'prediabetes', label: 'Prédiabète' },
+  { value: 'diabetes', label: 'Diabète' },
+  { value: 'high_cholesterol', label: 'Cholestérol élevé' },
+  { value: 'heart', label: 'Maladie cardiaque' },
+  { value: 'thyroid', label: 'Thyroïde' },
+  { value: 'kidney', label: 'Reins' },
+  { value: 'liver', label: 'Foie' },
+  { value: 'digestive', label: 'Troubles digestifs' },
+  { value: 'osteoporosis', label: 'Os fragiles' },
+];
+
+const MEDICATIONS: { value: Medication; label: string }[] = [
+  { value: 'anticoagulant', label: 'Anticoagulant / antiagrégant' },
+  { value: 'statin', label: 'Statine (cholestérol)' },
+  { value: 'metformin', label: 'Metformine / antidiabétique' },
+  { value: 'thyroid_med', label: 'Lévothyroxine' },
+  { value: 'antidepressant', label: 'Antidépresseur' },
+  { value: 'antihypertensive', label: 'Traitement de la tension' },
+  { value: 'ppi', label: 'Anti-acide (IPP)' },
+  { value: 'hormonal_contraception', label: 'Contraception hormonale' },
+];
+
+const FAMILY: { value: FamilyHistory; label: string }[] = [
+  { value: 'heart', label: 'Infarctus / AVC avant 60 ans' },
+  { value: 'diabetes', label: 'Diabète' },
+  { value: 'cancer', label: 'Cancer' },
+  { value: 'dementia', label: 'Alzheimer / démence' },
+];
+
+export function HealthStep({ p, set }: Props) {
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <Field label="Problèmes de santé connus" hint="Ils adaptent les calories, l’entraînement et surtout les compléments (sécurité).">
+        <Chips options={CONDITIONS} selected={p.conditions} onToggle={(v) => set({ conditions: toggle(p.conditions, v) })} />
+      </Field>
+      <Field label="Traitements en cours" hint="Pour éviter les interactions avec les compléments.">
+        <Chips options={MEDICATIONS} selected={p.medications} onToggle={(v) => set({ medications: toggle(p.medications, v) })} />
+      </Field>
+      <Field label="Tabac">
+        <Segmented
+          value={p.smoking}
+          onChange={(smoking) => set({ smoking })}
+          options={[
+            { value: 'never', label: 'Jamais' },
+            { value: 'former', label: 'Ancien fumeur' },
+            { value: 'current', label: 'Fumeur' },
+          ]}
+        />
+      </Field>
+      <Field label="Antécédents dans la famille proche" hint="Parents, frères et sœurs : adapte tes dépistages et tes cibles.">
+        <Chips options={FAMILY} selected={p.familyHistory} onToggle={(v) => set({ familyHistory: toggle(p.familyHistory, v) })} />
+      </Field>
+      {p.sex === 'female' && (
+        <Field label="Situation">
+          <Segmented
+            value={p.femaleStatus ?? 'cycle'}
+            onChange={(femaleStatus) => set({ femaleStatus })}
+            options={[
+              { value: 'cycle', label: 'Cycles' },
+              { value: 'pregnant', label: 'Enceinte' },
+              { value: 'breastfeeding', label: 'Allaitement' },
+              { value: 'menopause', label: 'Ménopause' },
+            ]}
+          />
+        </Field>
+      )}
+    </div>
+  );
+}
+
+const PRIORITIES: { value: MusclePriority; label: string }[] = [
+  { value: 'shoulders', label: 'Épaules' },
+  { value: 'back', label: 'Dos' },
+  { value: 'chest', label: 'Pectoraux' },
+  { value: 'arms', label: 'Bras' },
+  { value: 'abs', label: 'Abdos / taille' },
+  { value: 'glutes', label: 'Fessiers' },
+  { value: 'legs', label: 'Cuisses' },
+  { value: 'calves', label: 'Mollets' },
+];
+
+const CARDIO: { value: CardioMode; label: string }[] = [
+  { value: 'bike', label: 'Vélo' },
+  { value: 'walk', label: 'Marche rapide' },
+  { value: 'run', label: 'Course' },
+  { value: 'row', label: 'Rameur' },
+  { value: 'swim', label: 'Natation' },
+  { value: 'elliptical', label: 'Elliptique' },
+];
+
+export function RhythmStep({ p, set }: Props) {
+  const sleep = plannedSleepHours(p);
+  const dayOptions = WEEKDAYS_SHORT.map((label, i) => ({ value: String(i), label }));
+  return (
+    <div className="stack" style={{ gap: 14 }}>
+      <div className="grid2">
+        <Field label="Heure de lever">
+          <input className="input" type="time" value={p.wakeTime} onChange={(e) => e.target.value && set({ wakeTime: e.target.value })} />
+        </Field>
+        <Field label="Heure de coucher">
+          <input className="input" type="time" value={p.bedTime} onChange={(e) => e.target.value && set({ bedTime: e.target.value })} />
+        </Field>
+      </div>
+      <div className={`small ${sleep < 7 ? 'down-bad' : 'text-2'}`} style={{ marginTop: -6 }}>
+        {sleep.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} h au lit{sleep < 7 ? ' : vise au moins 7 h 30 pour récupérer et garder ton muscle.' : '.'}
+      </div>
+      <Field label="Quand t’entraînes-tu ?">
+        <Segmented<TrainingTime>
+          value={p.trainingTime}
+          onChange={(trainingTime) => set({ trainingTime })}
+          options={[
+            { value: 'morning', label: 'Matin' },
+            { value: 'noon', label: 'Midi' },
+            { value: 'evening', label: 'Soir' },
+          ]}
+        />
+      </Field>
+      <Field label={`Tes jours de musculation (${p.trainingWeekdays.length}/${p.trainingDays})`} hint="Choisis exactement autant de jours que de séances, sinon l’app les place pour toi.">
+        <Chips options={dayOptions} selected={p.trainingWeekdays.map(String)} onToggle={(v) => set({ trainingWeekdays: toggle(p.trainingWeekdays, Number(v)).sort((a, b) => a - b) })} />
+      </Field>
+      <Field label="Muscles prioritaires (3 max)" hint="Ils reçoivent plus de volume pour corriger tes points faibles.">
+        <Chips
+          options={PRIORITIES}
+          selected={p.priorities}
+          onToggle={(v) => {
+            const next = toggle(p.priorities, v);
+            if (next.length <= 3) set({ priorities: next });
+          }}
+        />
+      </Field>
+      <Field label="Cardio que tu aimes">
+        <Chips options={CARDIO} selected={p.cardioModes} onToggle={(v) => set({ cardioModes: toggle(p.cardioModes, v) })} />
+      </Field>
+    </div>
+  );
 }

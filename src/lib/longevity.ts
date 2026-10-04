@@ -1,4 +1,5 @@
 // Habitudes quotidiennes et protocole longévité (intérieur & extérieur).
+import { fromMinutes, toMinutes } from './profile';
 import type { DailyLog, Profile, Sex } from './types';
 import { addDays, todayISO } from './util';
 
@@ -28,6 +29,8 @@ export function habitsFor(profile: Profile, waterL: number, proteinG: number): H
     { id: 'floss', label: 'Fil dentaire / brossettes', detail: 'La santé des gencives est liée au risque cardiovasculaire.', group: 'peau & apparence' },
     { id: 'supps', label: 'Compléments pris', detail: 'Voir ton protocole dans l’onglet Santé.', group: 'nutrition' },
   ];
+  if (profile.smoking === 'current')
+    list.unshift({ id: 'no_smoke', label: 'Zéro cigarette aujourd’hui', detail: 'Arrêter de fumer est LE geste longévité n°1 (≈ 10 ans d’espérance de vie). Aide gratuite : Tabac Info Service, 39 89.', group: 'corps' });
   if (profile.alcoholPerWeek === 0) return list.filter((h) => h.id !== 'no_alcohol').concat({ id: 'social', label: 'Lien social', detail: 'Un échange réel (pas un écran) avec un proche : la qualité des relations est un des plus forts prédicteurs de longévité.', group: 'mental' });
   return list;
 }
@@ -80,12 +83,18 @@ export function longevityProtocol(profile: Profile, age: number): ProtocolSectio
     { title: 'Dentiste', text: 'Détartrage 1-2×/an.' },
     { title: 'Tension artérielle', text: 'Objectif < 120/80 mmHg. Un tensiomètre (ex. Withings BPM) à la maison est plus fiable qu’une mesure au cabinet.' },
   ];
-  if (age >= 45) screenings.push({ title: 'Cardiaque', text: 'Discuter d’un score calcique coronaire (scanner) si facteurs de risque : il révèle l’athérosclérose réelle.' });
+  const fh = profile.familyHistory ?? [];
+  if (fh.includes('heart'))
+    screenings.push({ title: 'Cardiaque (antécédents familiaux)', text: 'Lp(a) à doser une fois, ApoB/LDL à viser bas (< 0,8 g/L d’ApoB), et score calcique coronaire à discuter dès 40 ans.' });
+  else if (age >= 45) screenings.push({ title: 'Cardiaque', text: 'Discuter d’un score calcique coronaire (scanner) si facteurs de risque : il révèle l’athérosclérose réelle.' });
+  if (fh.includes('diabetes')) screenings.push({ title: 'Diabète (antécédents familiaux)', text: 'HbA1c et glycémie à jeun chaque année ; la musculation et le tour de taille sont tes meilleures protections.' });
+  if (fh.includes('cancer')) screenings.push({ title: 'Cancer (antécédents familiaux)', text: 'Selon le cancer et l’âge du parent au diagnostic, un dépistage plus précoce ou une consultation d’oncogénétique peut être indiqué : parles-en à ton médecin.' });
+  if (fh.includes('dementia')) screenings.push({ title: 'Cerveau (antécédents familiaux)', text: 'Les leviers les mieux prouvés : tension maîtrisée, activité physique, sommeil, audition (appareiller si besoin), lien social, pas de tabac.' });
   if (age >= 50) screenings.push({ title: 'Côlon', text: 'Test immunologique de dépistage tous les 2 ans (50-74 ans), coloscopie selon le risque.' });
   if (profile.sex === 'female' && age >= 25) screenings.push({ title: 'Gynécologie', text: 'Frottis/test HPV selon le calendrier ; mammographie dès 50 ans.' });
   if (profile.sex === 'male' && age >= 50) screenings.push({ title: 'Prostate', text: 'PSA à discuter avec le médecin (bénéfice/risque).' });
 
-  return [
+  const sections: ProtocolSection[] = [
     {
       title: 'Les 4 piliers mesurables',
       items: [
@@ -145,4 +154,55 @@ export function longevityProtocol(profile: Profile, age: number): ProtocolSectio
       ],
     },
   ];
+  if (profile.smoking === 'current')
+    sections.unshift({
+      title: 'Priorité absolue',
+      items: [{ title: 'Arrêter le tabac', text: 'Aucun complément, régime ou programme ne compense la cigarette. Substituts nicotiniques remboursés, accompagnement gratuit au 39 89 (Tabac Info Service). Le vapotage est moins nocif que le tabac mais pas anodin.', evidence: 'A' }],
+    });
+  return sections;
+}
+
+export interface TimelineItem {
+  time: string;
+  label: string;
+  detail?: string;
+}
+
+/**
+ * Journée type idéale, calculée à partir de tes horaires de lever/coucher, de ton
+ * créneau d'entraînement et de tes compléments.
+ */
+export function dayTimeline(
+  p: Pick<Profile, 'wakeTime' | 'bedTime' | 'trainingTime' | 'mealsPerDay'>,
+  opts: { training?: string; morningSupps?: string[]; eveningSupps?: string[] },
+): TimelineItem[] {
+  const wake = toMinutes(p.wakeTime);
+  let bed = toMinutes(p.bedTime);
+  if (bed <= wake) bed += 1440;
+  const items: { t: number; label: string; detail?: string }[] = [];
+  items.push({ t: wake, label: 'Réveil', detail: 'Même heure chaque jour, week-end compris.' });
+  items.push({ t: wake + 5, label: 'Pesée', detail: 'À jeun, après les toilettes, avant de boire.' });
+  items.push({ t: wake + 15, label: 'Lumière du jour', detail: '10 min dehors (même nuageux) : cale ton horloge interne.' });
+
+  const trainStart = p.trainingTime === 'morning' ? wake + 60 : p.trainingTime === 'noon' ? 12 * 60 + 15 : Math.min(18 * 60 + 30, bed - 4 * 60);
+  const breakfast = p.trainingTime === 'morning' ? trainStart + 80 : wake + 30;
+  items.push({ t: breakfast, label: 'Petit-déjeuner', detail: opts.morningSupps?.length ? `Avec : ${opts.morningSupps.join(', ')}` : 'Riche en protéines.' });
+  if (opts.training) {
+    items.push({ t: trainStart, label: `Entraînement : ${opts.training}`, detail: p.trainingTime === 'morning' ? 'Un café et un verre d’eau avant, le petit-déjeuner juste après.' : undefined });
+  }
+  const lunch = p.trainingTime === 'noon' ? 13 * 60 + 30 : 12 * 60 + 30;
+  items.push({ t: lunch, label: 'Déjeuner', detail: opts.training && p.trainingTime === 'noon' ? 'Repas post-entraînement : protéines + féculents.' : 'Marche de 10 min après.' });
+  const caffeineCut = Math.min(14 * 60, bed - 9 * 60);
+  items.push({ t: caffeineCut, label: 'Dernière caféine', detail: 'Café, thé, cola, pré-workout : plus rien après.' });
+  if (p.mealsPerDay >= 4) {
+    const snack = opts.training && p.trainingTime === 'evening' ? trainStart - 75 : 16 * 60 + 30;
+    items.push({ t: snack, label: opts.training && p.trainingTime === 'evening' ? 'Collation pré-entraînement' : 'Collation', detail: 'Protéines + un fruit.' });
+  }
+  const dinner = Math.min(Math.max(19 * 60 + 30, opts.training && p.trainingTime === 'evening' ? trainStart + 105 : 0), bed - 150);
+  items.push({ t: dinner, label: 'Dîner', detail: 'Au moins 2 h 30 avant le coucher pour mieux dormir.' });
+  items.push({ t: bed - 60, label: 'Écrans coupés, lumière tamisée', detail: 'Chambre fraîche (18-19 °C) et noire.' });
+  if (opts.eveningSupps?.length) items.push({ t: bed - 45, label: 'Compléments du soir', detail: opts.eveningSupps.join(', ') });
+  const inBed = wake + 1440 - bed;
+  items.push({ t: bed, label: 'Coucher', detail: `${Math.floor(inBed / 60)} h ${String(inBed % 60).padStart(2, '0')} de nuit${inBed < 450 ? ' : un peu court, vise 7 h 30 minimum.' : '.'}` });
+  return items.sort((a, b) => a.t - b.t).map((i) => ({ time: fromMinutes(i.t), label: i.label, detail: i.detail }));
 }

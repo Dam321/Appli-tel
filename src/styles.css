@@ -1418,3 +1418,69 @@ details[open] > summary.disclosure::after {
     transition: none !important;
   }
 }
+
+.rir-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 0 4px 36px;
+}
+
+.rir-row .chip {
+  min-height: 32px;
+  min-width: 36px;
+  padding: 4px 8px;
+}
+
+.photo-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.photo-compare figure {
+  margin: 0;
+}
+
+.photo-compare img {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.photo-compare figcaption {
+  font-size: 12.5px;
+  color: var(--text-2);
+  text-align: center;
+  margin-top: 4px;
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.photo-thumb {
+  border: 0;
+  padding: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 3 / 4;
+  background: var(--surface-2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

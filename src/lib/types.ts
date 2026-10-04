@@ -2,13 +2,39 @@
 
 export type Sex = 'male' | 'female';
 export type Goal = 'auto' | 'fat_loss' | 'recomp' | 'muscle_gain';
-export type Phase = 'cut' | 'recomp' | 'lean_gain';
+export type Phase = 'cut' | 'recomp' | 'lean_gain' | 'maintain';
 export type Experience = 'beginner' | 'intermediate' | 'advanced';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
 export type Diet = 'omnivore' | 'pescatarian' | 'vegetarian' | 'vegan';
 export type Allergen = 'lactose' | 'gluten' | 'nuts' | 'peanut' | 'egg' | 'fish' | 'shellfish' | 'soy' | 'sesame';
 export type Equipment = 'barbell' | 'dumbbells' | 'bench' | 'pullup_bar' | 'machines' | 'bands';
 export type Injury = 'shoulder' | 'knee' | 'lower_back' | 'elbow' | 'wrist';
+export type Condition =
+  | 'hypertension'
+  | 'diabetes'
+  | 'prediabetes'
+  | 'high_cholesterol'
+  | 'thyroid'
+  | 'kidney'
+  | 'liver'
+  | 'heart'
+  | 'digestive'
+  | 'osteoporosis';
+export type Medication =
+  | 'anticoagulant'
+  | 'statin'
+  | 'metformin'
+  | 'thyroid_med'
+  | 'antidepressant'
+  | 'antihypertensive'
+  | 'ppi'
+  | 'hormonal_contraception';
+export type FamilyHistory = 'heart' | 'diabetes' | 'cancer' | 'dementia';
+export type FemaleStatus = 'cycle' | 'pregnant' | 'breastfeeding' | 'menopause';
+export type MusclePriority = 'chest' | 'back' | 'shoulders' | 'arms' | 'glutes' | 'legs' | 'abs' | 'calves';
+export type CardioMode = 'bike' | 'run' | 'row' | 'swim' | 'walk' | 'elliptical';
+export type TrainingTime = 'morning' | 'noon' | 'evening';
+export type Budget = 'eco' | 'standard' | 'premium';
 
 export interface Profile {
   name: string;
@@ -38,6 +64,25 @@ export interface Profile {
   fattyFishPerWeek: number;
   alcoholPerWeek: number;
   sunExposure: 'low' | 'medium' | 'high';
+  // ——— Bilan complet (v2) ———
+  conditions: Condition[];
+  medications: Medication[];
+  smoking: 'never' | 'former' | 'current';
+  familyHistory: FamilyHistory[];
+  femaleStatus?: FemaleStatus;
+  /** Jours d'entraînement préférés (0 = lundi) */
+  trainingWeekdays: number[];
+  trainingTime: TrainingTime;
+  priorities: MusclePriority[];
+  cardioModes: CardioMode[];
+  /** "HH:MM" */
+  wakeTime: string;
+  bedTime: string;
+  budget: Budget;
+  /** Temps de cuisine max en semaine (min) */
+  maxCookMinutes: number;
+  /** Version du questionnaire rempli (2 = bilan complet) */
+  profileVersion: number;
   createdAt: string;
 }
 
@@ -64,6 +109,13 @@ export interface Measurement {
   systolic?: number;
   diastolic?: number;
   vo2max?: number;
+  restingHr?: number;
+  neckCm?: number;
+  hipCm?: number;
+  chestCm?: number;
+  shouldersCm?: number;
+  armCm?: number;
+  thighCm?: number;
 }
 
 export interface BloodPanel {
@@ -77,7 +129,18 @@ export interface BloodPanel {
 export interface SetLog {
   reps: number;
   weight: number;
+  /** Répétitions en réserve ressenties (0 = échec) */
   rir?: number;
+}
+
+export interface Readiness {
+  /** 1 (très mauvais) → 5 (excellent) */
+  sleep: number;
+  energy: number;
+  /** 1 (très courbaturé) → 5 (aucune courbature) */
+  soreness: number;
+  motivation: number;
+  sleepHours?: number;
 }
 
 export interface ExerciseLog {
@@ -107,6 +170,7 @@ export interface DailyLog {
   meals: Record<string, boolean>;
   steps?: number;
   sleepHours?: number;
+  readiness?: Readiness;
 }
 
 export interface WithingsAuth {
@@ -157,6 +221,12 @@ export interface Settings {
   anthropicKey?: string;
 }
 
+export interface ProgressPhoto {
+  id: string;
+  date: string;
+  angle: 'front' | 'side' | 'back';
+}
+
 export interface AppState {
   version: number;
   profile?: Profile;
@@ -168,4 +238,6 @@ export interface AppState {
   plan: PlanState;
   settings: Settings;
   coach: CoachMessage[];
+  /** Métadonnées des photos (les images sont dans IndexedDB) */
+  photos: ProgressPhoto[];
 }

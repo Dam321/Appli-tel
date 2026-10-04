@@ -3,7 +3,7 @@ import { navigate } from '../App';
 import { Icon } from '../components/icons';
 import { Badge, Card, ConfirmButton, Field, NumberInput, Segmented, Sheet } from '../components/ui';
 import { EXERCISE_BY_ID } from '../data/exercises';
-import { exerciseHistory, lastPerformance, setsText, suggestNext, type ProgramExercise, type ProgramSession } from '../lib/training';
+import { adjustForReadiness, exerciseHistory, isStalled, lastPerformance, PRIORITY_INFO, readinessAdvice, readinessScore, setsText, suggestNext, type ProgramExercise, type ProgramSession } from '../lib/training';
 import type { WorkoutLog } from '../lib/types';
 import { formatDay, mondayOf, todayISO, uid, WEEKDAYS_SHORT, weekdayIndex } from '../lib/util';
 import { useApp } from '../store';
@@ -11,9 +11,12 @@ import { setDaily } from './Today';
 
 export function Training({ tab }: { tab?: string }) {
   const { derived } = useApp();
+  const { state } = useApp();
   if (tab?.startsWith('log-')) {
     const session = derived.program.sessions.find((s) => s.id === tab.slice(4));
-    if (session) return <WorkoutLogger session={session} />;
+    const r = state.daily[todayISO()]?.readiness;
+    const advice = r ? readinessAdvice(readinessScore(r)) : undefined;
+    if (session) return <WorkoutLogger session={advice ? adjustForReadiness(session, advice.level) : session} lighter={advice?.level === 'easy'} />;
   }
   return tab === 'history' ? <History /> : <ProgramView />;
 }
@@ -51,6 +54,17 @@ function ProgramView() {
           ))}
         </div>
         <div className="tip">{program.weekNote}</div>
+        {profile.priorities.length > 0 && (
+          <div className="small text-2" style={{ marginTop: 8 }}>
+            Muscles prioritaires (volume renforcé) : {profile.priorities.map((p) => PRIORITY_INFO[p].label).join(', ')}.
+            {profile.sessionMinutes <= 60 && ' Avec des séances de 75 min, ils recevraient encore plus de volume.'}
+          </div>
+        )}
+        {program.healthNotes.map((n) => (
+          <div key={n} className="tip" style={{ background: 'var(--warning-soft)' }}>
+            {n}
+          </div>
+        ))}
       </Card>
 
       {program.sessions.map((s) => (
@@ -72,7 +86,7 @@ function ProgramView() {
                 <div key={e.exerciseId} className="list-item" style={{ alignItems: 'flex-start' }} onClick={() => setOpen(open === key ? null : key)}>
                   <div className="main">
                     <div className="title">
-                      {e.name} {ex.lengthened && <Badge tone="accent">étirement</Badge>} {e.superset && <Badge>superset</Badge>}
+                      {e.name} {e.priority && <Badge tone="good">priorité</Badge>} {ex.lengthened && <Badge tone="accent">étirement</Badge>} {e.superset && <Badge>superset</Badge>}
                     </div>
                     <div className="sub">
                       {setsText(e)} · RIR {e.rir} · repos {Math.round((e.rest / 60) * 10) / 10} min
@@ -86,7 +100,7 @@ function ProgramView() {
         </Card>
       ))}
 
-      <Card title="Cardio longévité" sub={`FC max estimée : ${program.cardio.hrMax} bpm`}>
+      <Card title="Cardio longévité" sub={`FC max estimée : ${program.cardio.hrMax} bpm · ${program.cardio.modes}`}>
         <div className="list">
           <div className="list-item">
             <div className="main">
@@ -174,6 +188,7 @@ function ProgramView() {
 interface DraftSet {
   weight?: number;
   reps?: number;
+  rir?: number;
   done: boolean;
 }
 
@@ -188,7 +203,7 @@ function loadDraft(sessionId: string): Record<string, DraftSet[]> | null {
   }
 }
 
-function WorkoutLogger({ session }: { session: ProgramSession }) {
+function WorkoutLogger({ session, lighter }: { session: ProgramSession; lighter?: boolean }) {
   const { state, update, derived, toast } = useApp();
   const [exercises, setExercises] = useState<ProgramExercise[]>(session.exercises);
   const [sets, setSets] = useState<Record<string, DraftSet[]>>(() => {
@@ -236,7 +251,7 @@ function WorkoutLogger({ session }: { session: ProgramSession }) {
     const entries = exercises
       .map((pe) => ({
         exerciseId: pe.exerciseId,
-        sets: (sets[pe.exerciseId] ?? []).filter((x) => x.done && x.reps).map((x) => ({ weight: x.weight ?? 0, reps: x.reps! })),
+        sets: (sets[pe.exerciseId] ?? []).filter((x) => x.done && x.reps).map((x) => ({ weight: x.weight ?? 0, reps: x.reps!, ...(x.rir !== undefined ? { rir: x.rir } : {}) })),
       }))
       .filter((e) => e.sets.length);
     if (!entries.length) {
@@ -277,8 +292,9 @@ function WorkoutLogger({ session }: { session: ProgramSession }) {
       <div>
         <h2 style={{ fontSize: 22 }}>{session.name}</h2>
         <div className="small text-2">
-          Échauffement : 5 min de cardio léger, puis 2-3 séries de montée en charge sur le 1er exercice.
+          Échauffement : 5 min de cardio léger, puis 2-3 séries de montée en charge sur le 1er exercice. Note les reps en réserve (RIR) : la progression s’ajuste dessus.
         </div>
+        {lighter && <div className="tip">Version allégée selon ta forme du jour : 1 série de moins et 1 rep de plus en réserve.</div>}
       </div>
       {exercises.map((pe) => {
         const last = lastPerformance(state.workouts, pe.exerciseId);
@@ -329,8 +345,23 @@ function WorkoutLogger({ session }: { session: ProgramSession }) {
                 >
                   <Icon.check />
                 </button>
+                {st.done && (
+                  <div className="rir-row">
+                    <span className="small muted">En réserve :</span>
+                    {[0, 1, 2, 3, 4].map((n) => (
+                      <button key={n} type="button" className={`chip ${st.rir === n ? 'on' : ''}`} onClick={() => setField(pe.exerciseId, i, { rir: n })}>
+                        {n === 4 ? '4+' : n}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
+            {isStalled(state.workouts, pe.exerciseId) && (
+              <div className="tip" style={{ background: 'var(--warning-soft)' }}>
+                Stagnation sur cet exercice depuis 3 séances : change de variante (bouton ⇄), dors plus, ou avance ta semaine de décharge.
+              </div>
+            )}
             <details style={{ marginTop: 10 }}>
               <summary className="small muted">Technique</summary>
               <div className="tip">{pe.cue}</div>
