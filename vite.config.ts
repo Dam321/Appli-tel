@@ -17,6 +17,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
+        id: './',
         name: 'Vitalis – Muscle, nutrition & longévité',
         short_name: 'Vitalis',
         description: 'Programme de musculation, nutrition, liste de courses, balance Withings, prise de sang et compléments personnalisés.',
@@ -27,6 +28,13 @@ export default defineConfig({
         orientation: 'portrait',
         background_color: '#0d0d0d',
         theme_color: '#0f7a5c',
+        categories: ['health', 'fitness', 'food'],
+        // Raccourcis Android : appui long sur l'icône
+        shortcuts: [
+          { name: 'Séance du jour', short_name: 'Séance', url: './#/training', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Liste de courses', short_name: 'Courses', url: './#/nutrition?tab=courses', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
+          { name: 'Mes mesures', short_name: 'Mesures', url: './#/body', icons: [{ src: 'icon-192.png', sizes: '192x192', type: 'image/png' }] },
+        ],
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },

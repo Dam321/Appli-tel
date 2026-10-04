@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Icon } from '../components/icons';
+import { InstallCard } from '../components/InstallCard';
 import { importState } from '../lib/storage';
 import type { Profile } from '../lib/types';
 import { uid } from '../lib/util';
@@ -50,6 +51,7 @@ export function Onboarding() {
           </div>
           Vitalis
         </div>
+        <InstallCard />
         <h1 style={{ fontSize: 30, letterSpacing: '-0.02em' }}>Ton coach santé, muscle & longévité.</h1>
         <p className="text-2" style={{ margin: 0 }}>
           Programme de musculation, nutrition sur-mesure avec menu et liste de courses, synchro de ta balance Withings, analyse de ta prise de sang et protocole de compléments fondé sur

@@ -1,5 +1,6 @@
 import { navigate } from '../App';
 import { Icon } from '../components/icons';
+import { InstallCard } from '../components/InstallCard';
 import { Badge, Callout, Card, Check, Meter, Ring, Stat } from '../components/ui';
 import { daysSinceLastWeighIn, fatCategory, trendSeries } from '../lib/bodyComp';
 import { dayScore, streak } from '../lib/longevity';
@@ -68,6 +69,7 @@ export function Today() {
         </div>
       </div>
 
+      <InstallCard />
       {!IS_ARTIFACT && !state.settings.withings?.refreshToken && (
         <Callout title="Connecte ta balance Withings" action={<button className="btn sm primary" onClick={() => navigate('settings')}>Connecter</button>}>
           Tes pesées et ta composition corporelle arriveront automatiquement, et ton plan s’ajustera tout seul.
