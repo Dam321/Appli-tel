@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { nightReport, nightSummary } from '../lib/sleep';
 import { readinessAdvice, readinessScore } from '../lib/training';
 import type { Readiness } from '../lib/types';
 import { todayISO } from '../lib/util';
@@ -6,7 +7,7 @@ import { setDaily } from '../pages/Today';
 import { useApp } from '../store';
 import { Badge, Card, Field, NumberInput, Segmented } from './ui';
 
-const QUESTIONS: { key: keyof Omit<Readiness, 'sleepHours'>; label: string; low: string; high: string }[] = [
+const QUESTIONS: { key: 'sleep' | 'energy' | 'soreness' | 'motivation'; label: string; low: string; high: string }[] = [
   { key: 'sleep', label: 'Qualité du sommeil', low: 'Nuit horrible', high: 'Nuit parfaite' },
   { key: 'energy', label: 'Énergie', low: 'Vidé', high: 'En pleine forme' },
   { key: 'soreness', label: 'Courbatures', low: 'Très courbaturé', high: 'Aucune' },
@@ -18,8 +19,17 @@ export function ReadinessCard({ trainingToday }: { trainingToday: boolean }) {
   const { state, update } = useApp();
   const today = todayISO();
   const saved = state.daily[today]?.readiness;
-  const [draft, setDraft] = useState<Readiness>(saved ?? { sleep: 3, energy: 3, soreness: 3, motivation: 3 });
+  const night = nightReport(state.daily, today);
+  const nightInfo = night && nightSummary(night);
+  const [draft, setDraft] = useState<Readiness>(saved ?? { sleep: 3, energy: 3, soreness: 3, motivation: 3, sleepHours: night?.sleep.hours });
   const [editing, setEditing] = useState(!saved);
+  const measured = (
+    nightInfo && (
+      <div className={`tip ${nightInfo.tone === 'warning' ? 'warn' : ''}`} style={{ marginTop: 0 }}>
+        <b>Nuit mesurée par Withings :</b> {nightInfo.text}
+      </div>
+    )
+  );
 
   if (saved && !editing) {
     const score = readinessScore(saved);
@@ -30,6 +40,7 @@ export function ReadinessCard({ trainingToday }: { trainingToday: boolean }) {
         sub={trainingToday ? adv.text : 'Pas de musculation aujourd’hui : marche, mobilité et sommeil.'}
         action={<Badge tone={adv.level === 'go' ? 'good' : adv.level === 'easy' ? 'warning' : 'serious'}>{`${score}/100 · ${adv.title}`}</Badge>}
       >
+        {measured}
         <button className="btn ghost sm" onClick={() => setEditing(true)}>
           Modifier
         </button>
@@ -40,6 +51,7 @@ export function ReadinessCard({ trainingToday }: { trainingToday: boolean }) {
   return (
     <Card title="Comment tu te sens ce matin ?" sub="10 secondes : ta séance s’adapte à ta récupération.">
       <div className="stack" style={{ gap: 12 }}>
+        {measured}
         {QUESTIONS.map((q) => (
           <div key={q.key}>
             <div className="row between small" style={{ marginBottom: 4 }}>
@@ -51,13 +63,14 @@ export function ReadinessCard({ trainingToday }: { trainingToday: boolean }) {
             <Segmented value={draft[q.key]} onChange={(v) => setDraft((d) => ({ ...d, [q.key]: v }))} options={[1, 2, 3, 4, 5].map((n) => ({ value: n, label: String(n) }))} />
           </div>
         ))}
-        <Field label="Heures dormies (optionnel)">
+        <Field label={night ? 'Heures dormies (mesurées par Withings)' : 'Heures dormies (optionnel)'}>
           <NumberInput value={draft.sleepHours} onChange={(sleepHours) => setDraft((d) => ({ ...d, sleepHours }))} unit="h" step={0.5} />
         </Field>
         <button
           className="btn primary block"
           onClick={() => {
-            setDaily(update, today, (d) => ({ ...d, readiness: draft, sleepHours: draft.sleepHours ?? d.sleepHours, habits: { ...d.habits, sleep: d.habits.sleep || (draft.sleepHours ?? 0) >= 7.5 } }));
+            const r: Readiness = { ...draft, hrDelta: night?.hrDelta };
+            setDaily(update, today, (d) => ({ ...d, readiness: r, sleepHours: draft.sleepHours ?? d.sleepHours, habits: { ...d.habits, sleep: d.habits.sleep || (draft.sleepHours ?? 0) >= 7.5 } }));
             setEditing(false);
           }}
         >

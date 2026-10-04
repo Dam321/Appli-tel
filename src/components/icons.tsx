@@ -10,6 +10,18 @@ function Svg({ children }: { children: ReactNode }) {
 }
 
 export const Icon = {
+  camera: () => (
+    <Svg>
+      <path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </Svg>
+  ),
+  bag: () => (
+    <Svg>
+      <path d="M5 8h14l-1 12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1z" />
+      <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+    </Svg>
+  ),
   home: () => (
     <Svg>
       <path d="M3 10.5 12 3l9 7.5" />

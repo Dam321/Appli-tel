@@ -20,7 +20,10 @@ Application mobile (PWA installable sur iPhone et Android) qui :
 - révèle ce que disent **tes propres données** : date prévue d’arrivée à l’objectif, effet de ton sommeil sur ta forme, muscles qui progressent ou stagnent, évolution de la prise de sang ;
 - **ajuste le programme tout seul** : +1 série pour les muscles qui stagnent (sauf si ta récupération est mauvaise) ;
 - donne une routine **peau, cheveux & dents** fondée sur les preuves (selon ton type de peau et tes objectifs) ;
-- intègre un **coach IA** (Claude) optionnel qui connaît toutes tes données, fait ton **rapport de la semaine** et **analyse ta silhouette** sur tes photos (points faibles, posture, priorités musculaires appliquées au programme en un geste).
+- récupère tes **nuits** si tu as une montre ou un capteur de sommeil Withings : durée, efficacité et **fréquence cardiaque nocturne** comparée à ta moyenne (signe de récupération incomplète), qui ajustent ta forme du jour ;
+- **rééquilibre ta journée** après un repas hors menu (resto, invitation) : garde les protéines, ajuste féculents et matières grasses des repas suivants ;
+- liste l’**équipement qui vaut vraiment l’achat** pour ton cas (tensiomètre validé, mètre ruban, balance de cuisine, ceinture cardio…) avec prix et critères de choix, et ce qu’il **ne faut pas acheter** (gadgets sans preuve) ;
+- intègre un **coach IA** (Claude) optionnel qui connaît toutes tes données, fait ton **rapport de la semaine**, **analyse ta silhouette** sur tes photos (points faibles, posture, priorités musculaires appliquées au programme en un geste), **estime un repas en photo** et **lit ton compte-rendu de prise de sang** (PDF ou photos) pour tout remplir à ta place.
 
 Toutes les données restent **sur ton téléphone** (stockage local). Seuls Withings (si tu le connectes) et Anthropic (si tu actives le coach) reçoivent des données.
 

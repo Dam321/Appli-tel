@@ -16,8 +16,9 @@ import { Health } from './pages/Health';
 import { Settings } from './pages/Settings';
 import { Coach } from './pages/Coach';
 import { Score } from './pages/Score';
+import { Gear } from './pages/Gear';
 
-export type Route = 'home' | 'body' | 'training' | 'nutrition' | 'health' | 'settings' | 'coach' | 'score';
+export type Route = 'home' | 'body' | 'training' | 'nutrition' | 'health' | 'settings' | 'coach' | 'score' | 'gear';
 
 const TITLES: Record<Route, string> = {
   home: 'Aujourd’hui',
@@ -28,6 +29,7 @@ const TITLES: Record<Route, string> = {
   settings: 'Réglages',
   coach: 'Coach IA',
   score: 'Bilan 360°',
+  gear: 'Équipement',
 };
 
 function parseHash(): { route: Route; tab?: string } {
@@ -136,6 +138,7 @@ export function App() {
     settings: <Settings oauthError={oauthError} />,
     coach: <Coach />,
     score: <Score />,
+    gear: <Gear />,
   };
 
   const nav: { route: Route; label: string; icon: ReactNode }[] = [
@@ -145,7 +148,7 @@ export function App() {
     { route: 'nutrition', label: 'Nutrition', icon: <Icon.food /> },
     { route: 'health', label: 'Santé', icon: <Icon.heart /> },
   ];
-  const sub = loc.route === 'settings' || loc.route === 'coach' || loc.route === 'score';
+  const sub = loc.route === 'settings' || loc.route === 'coach' || loc.route === 'score' || loc.route === 'gear';
 
   return (
     <div className="app">

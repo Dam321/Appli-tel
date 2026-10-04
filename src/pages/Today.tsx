@@ -1,6 +1,8 @@
 import { navigate } from '../App';
 import { Icon } from '../components/icons';
 import { InstallCard } from '../components/InstallCard';
+import { MealLog } from '../components/MealLog';
+import { dayBalance } from '../lib/dayBalance';
 import { ProfileUpgrade } from '../components/ProfileUpgrade';
 import { ReadinessCard } from '../components/ReadinessCard';
 import { assess } from '../lib/assessment';
@@ -38,9 +40,10 @@ export function Today() {
   const hour = new Date().getHours();
   const hello = hour < 5 ? 'Bonne nuit' : hour < 18 ? 'Bonjour' : 'Bonsoir';
 
-  const eaten = dayPlan.meals.filter((m) => log.meals[m.slot]);
-  const eatenKcal = eaten.reduce((a, m) => a + m.macros.kcal, 0);
-  const eatenP = eaten.reduce((a, m) => a + m.macros.p, 0);
+  const balance = dayBalance(dayPlan.meals, log.meals, log.extraMeals ?? [], { kcal: derived.mealTargets.kcal, protein: derived.mealTargets.protein }, profile.diet);
+  const eatenKcal = balance.eaten.kcal;
+  const eatenP = balance.eaten.protein;
+  const replaced = new Set((log.extraMeals ?? []).map((e) => e.replaces));
 
   // Bilan hebdomadaire
   const series = trendSeries(state.measurements, 'weightKg');
@@ -49,7 +52,7 @@ export function Today() {
   const checkDue = (!lastCheck || daysBetween(lastCheck, today) >= 7) && dataDays >= 10;
   // Adhérence : repas cochés sur les 7 derniers jours (si tu utilises les cases)
   const last7 = Array.from({ length: 7 }, (_, i) => state.daily[addDays(today, -i - 1)]);
-  const checkedMeals = last7.reduce((a, d) => a + Object.values(d?.meals ?? {}).filter(Boolean).length, 0);
+  const checkedMeals = last7.reduce((a, d) => a + Object.values(d?.meals ?? {}).filter(Boolean).length + (d?.extraMeals ?? []).filter((e) => e.replaces).length, 0);
   const mealAdherence = checkedMeals > 0 ? Math.min(1, checkedMeals / (7 * profile.mealsPerDay)) : undefined;
   const ms = state.measurements.map(normalizeMeasurement);
   const leanSeries = trendSeries(ms, ms.some((m) => m.muscleMassKg !== undefined) ? 'muscleMassKg' : 'leanMassKg', 0.15);
@@ -211,7 +214,7 @@ export function Today() {
       >
         <Meter value={eatenKcal} max={dayPlan.totals.kcal} />
         <div style={{ marginTop: 6 }}>
-          {dayPlan.meals.map((m) => (
+          {dayPlan.meals.filter((m) => !replaced.has(m.slot)).map((m) => (
             <Check
               key={m.slot}
               checked={!!log.meals[m.slot]}
@@ -221,6 +224,7 @@ export function Today() {
             />
           ))}
         </div>
+        <MealLog meals={dayPlan.meals} log={log} />
       </Card>
 
       {stack.length > 0 && (

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { navigate } from '../App';
+import { GearTeaser } from '../components/GearTeaser';
 import { Icon } from '../components/icons';
 import { Badge, Callout, Card, Check, Meter, Segmented, Sheet, shareOrCopy, Stat, Toggle } from '../components/ui';
 import { alternativesFor, generateWeekPlan, SLOT_LABEL, type PlannedMeal } from '../lib/mealPlanner';
@@ -323,6 +324,7 @@ function Shopping() {
         </form>
       </Card>
       <p className="small muted">Conseils : privilégie le bio pour les fruits rouges, épinards et pommes (les plus traités) ; poissons pêchés MSC ; œufs code 0 ou 1.</p>
+      <GearTeaser />
     </>
   );
 }

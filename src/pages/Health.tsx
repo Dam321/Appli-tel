@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { navigate } from '../App';
 import { Icon } from '../components/icons';
 import { Badge, Callout, Card, ConfirmButton, Evidence, Field, NumberInput, Segmented, Sheet, shareOrCopy, type Tone } from '../components/ui';
-import { CATEGORIES, derivedMetrics, formatRange, markerStatus, MARKERS, prescriptionText, STATUS_LABEL, type Marker, type MarkerStatus } from '../lib/blood';
+import { GearTeaser } from '../components/GearTeaser';
+import { LabReader } from '../components/LabReader';
+import { CATEGORIES, derivedMetrics, formatRange, mapLabResults, markerStatus, MARKERS, prescriptionText, STATUS_LABEL, type Marker, type MarkerStatus } from '../lib/blood';
 import { latestValues } from '../lib/bodyComp';
 import { cooperVo2, longevityProtocol, vo2Category } from '../lib/longevity';
 import { dailySchedule, medicationWarnings, STATUS_INFO, TIMING_LABEL, type SupplementRec } from '../lib/supplements';
@@ -11,6 +13,7 @@ import { useApp } from '../store';
 import { bioAge } from '../lib/bioage';
 import { skinPlan, type RoutineStep } from '../lib/skin';
 import type { Profile, SkinConcern, SkinType } from '../lib/types';
+import type { LabReading } from '../lib/coach';
 import { Chips, Toggle } from '../components/ui';
 
 export function Health({ tab }: { tab?: string }) {
@@ -156,7 +159,7 @@ function Blood() {
       <BioAgeCard />
 
       <button className="btn primary block" onClick={() => setEntering(true)}>
-        <Icon.plus /> Saisir mes résultats
+        <Icon.plus /> Ajouter mes résultats{state.settings.anthropicKey ? ' (PDF, photo ou saisie)' : ''}
       </button>
 
       {outOfRange.length > 0 && (
@@ -264,6 +267,19 @@ function BloodEntry({ onClose }: { onClose: () => void }) {
     const fr: Record<string, string> = { glucose: 'g/L', ldl: 'g/L', hdl: 'g/L', triglycerides: 'g/L', cholesterol: 'g/L', creatinine: 'mg/L', uric_acid: 'mg/L', testosterone: 'ng/mL' };
     return fr;
   });
+  const [aiFilled, setAiFilled] = useState<Set<string>>(new Set());
+  const [others, setOthers] = useState<{ name: string; value: string }[]>([]);
+  const [lab, setLab] = useState<string | undefined>();
+
+  const onRead = (r: LabReading) => {
+    const mapped = mapLabResults(r.results);
+    setVals((x) => ({ ...x, ...mapped.vals }));
+    setUnits((u) => ({ ...u, ...mapped.units }));
+    setAiFilled(new Set(Object.keys(mapped.vals)));
+    setOthers(r.others);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.date <= todayISO()) setDate(r.date);
+    if (r.lab) setLab(r.lab);
+  };
 
   const save = () => {
     const values: Record<string, number> = {};
@@ -278,7 +294,7 @@ function BloodEntry({ onClose }: { onClose: () => void }) {
       toast('Saisis au moins une valeur');
       return;
     }
-    update((s) => ({ ...s, bloodPanels: [...s.bloodPanels, { id: uid(), date, values }] }));
+    update((s) => ({ ...s, bloodPanels: [...s.bloodPanels, { id: uid(), date, values, lab }] }));
     toast(`${Object.keys(values).length} résultat(s) enregistré(s)`);
     onClose();
   };
@@ -286,6 +302,17 @@ function BloodEntry({ onClose }: { onClose: () => void }) {
   return (
     <Sheet title="Résultats de prise de sang" onClose={onClose}>
       <div className="stack" style={{ gap: 12 }}>
+        <LabReader onRead={onRead} />
+        {aiFilled.size > 0 && (
+          <Callout title={`${aiFilled.size} résultat(s) lu(s)${lab ? ` · ${lab}` : ''}`}>
+            Vérifie la date et les valeurs marquées « lu » (unité comprise) avant d’enregistrer.
+            {others.length > 0 && (
+              <div className="small muted" style={{ marginTop: 4 }}>
+                Non suivis par l’app : {others.map((o) => `${o.name} ${o.value}`).join(' · ')}
+              </div>
+            )}
+          </Callout>
+        )}
         <Field label="Date du prélèvement">
           <input className="input" type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} />
         </Field>
@@ -293,7 +320,7 @@ function BloodEntry({ onClose }: { onClose: () => void }) {
           Remplis seulement ce que tu as. Choisis l’unité indiquée sur ton compte-rendu.
         </p>
         {CATEGORIES.map((cat) => (
-          <details key={cat} open={cat === CATEGORIES[0]}>
+          <details key={cat} open={cat === CATEGORIES[0] || MARKERS.some((m) => m.category === cat && aiFilled.has(m.id))}>
             <summary className="disclosure" style={{ fontWeight: 650, padding: '8px 0' }}>
               {cat}
             </summary>
@@ -303,7 +330,7 @@ function BloodEntry({ onClose }: { onClose: () => void }) {
                 return (
                   <div key={m.id}>
                     <div className="small" style={{ fontWeight: 600, marginBottom: 4 }}>
-                      {m.name} <span className="muted">(norme {formatRange(m.ref[sex])} {m.unit})</span>
+                      {m.name} <span className="muted">(norme {formatRange(m.ref[sex])} {m.unit})</span> {aiFilled.has(m.id) && <Badge tone="accent">lu</Badge>}
                     </div>
                     <div className="row" style={{ gap: 8 }}>
                       <div style={{ flex: 1 }}>
@@ -350,6 +377,7 @@ function Longevity() {
 
   return (
     <>
+      <GearTeaser />
       <Card title="VO2max" sub="Ta capacité cardio-respiratoire, prédicteur n°1 de longévité">
         {vo2 && cat ? (
           <div className="row between">

@@ -146,6 +146,8 @@ export interface Readiness {
   soreness: number;
   motivation: number;
   sleepHours?: number;
+  /** Écart de la fréquence cardiaque nocturne (Withings) avec ta moyenne, en bpm */
+  hrDelta?: number;
 }
 
 export interface ExerciseLog {
@@ -169,6 +171,34 @@ export interface CardioLog {
   minutes: number;
 }
 
+/** Nuit mesurée par un appareil Withings (montre, capteur sous le matelas) */
+export interface SleepRecord {
+  hours: number;
+  efficiency?: number;
+  score?: number;
+  hrAvg?: number;
+  hrMin?: number;
+  deepMin?: number;
+  remMin?: number;
+  wakeups?: number;
+}
+
+/** Repas hors menu (photo analysée par l'IA ou saisie rapide) */
+export interface LoggedMeal {
+  id: string;
+  at: string;
+  name: string;
+  kcal: number;
+  protein: number;
+  carbs?: number;
+  fat?: number;
+  fiber?: number;
+  /** Créneau du menu remplacé (lunch, dinner…) ; absent = en plus */
+  replaces?: string;
+  source: 'photo' | 'manual';
+  comment?: string;
+}
+
 export interface DailyLog {
   habits: Record<string, boolean>;
   /** index des repas cochés comme mangés */
@@ -176,6 +206,8 @@ export interface DailyLog {
   steps?: number;
   sleepHours?: number;
   readiness?: Readiness;
+  sleep?: SleepRecord;
+  extraMeals?: LoggedMeal[];
 }
 
 export interface WithingsAuth {
@@ -247,6 +279,8 @@ export interface AppState {
   photos: ProgressPhoto[];
   /** Dernière analyse IA de la silhouette */
   physiqueAnalysis?: { date: string; result: PhysiqueAnalysis };
+  /** Équipement : déjà possédé, écarté, ou absent malgré la détection automatique */
+  gear: Record<string, 'owned' | 'skip' | 'missing'>;
 }
 
 export interface PhysiqueAnalysis {

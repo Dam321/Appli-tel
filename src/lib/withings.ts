@@ -2,12 +2,13 @@
 // Les requêtes sont envoyées en `application/x-www-form-urlencoded` avec le jeton
 // dans le corps : ce sont des requêtes CORS « simples », appelables directement
 // depuis le navigateur sans serveur intermédiaire.
-import type { Measurement, WithingsAuth } from './types';
+import type { Measurement, SleepRecord, WithingsAuth } from './types';
 
 const AUTH_URL = 'https://account.withings.com/oauth2_user/authorize2';
 const TOKEN_URL = 'https://wbsapi.withings.net/v2/oauth2';
 const MEASURE_URL = 'https://wbsapi.withings.net/measure';
 const MEASURE_V2_URL = 'https://wbsapi.withings.net/v2/measure';
+const SLEEP_V2_URL = 'https://wbsapi.withings.net/v2/sleep';
 
 /** Types de mesures Withings → champs de l'app */
 const MEAS_TYPES: Record<number, keyof Measurement> = {
@@ -166,6 +167,71 @@ export async function fetchSteps(auth: WithingsAuth, startYmd: string, endYmd: s
     offset = body.offset;
   }
   return out;
+}
+
+const SLEEP_FIELDS = [
+  'total_sleep_time,sleep_efficiency,sleep_score,hr_average,hr_min,deepsleepduration,remsleepduration,wakeupcount',
+  'total_sleep_time,hr_average,hr_min',
+];
+
+const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+
+/** Résumé d'une nuit Withings → jour du réveil (YYYY-MM-DD, heure locale) */
+export function parseSleepSeries(series: any[]): { date: string; sleep: SleepRecord }[] {
+  const byDay = new Map<string, SleepRecord>();
+  for (const x of series ?? []) {
+    const d = x.data ?? {};
+    const total = num(d.total_sleep_time);
+    if (!total || total < 3600) continue; // siestes et nuits incomplètes ignorées
+    const end = typeof x.enddate === 'number' ? new Date(x.enddate * 1000) : x.date ? new Date(`${x.date}T12:00:00`) : undefined;
+    if (!end || Number.isNaN(end.getTime())) continue;
+    const date = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    const eff = num(d.sleep_efficiency);
+    const rec: SleepRecord = {
+      hours: Math.round((total / 3600) * 10) / 10,
+      efficiency: eff !== undefined ? Math.round(eff <= 1 ? eff * 100 : eff) : undefined,
+      score: num(d.sleep_score),
+      hrAvg: num(d.hr_average),
+      hrMin: num(d.hr_min),
+      deepMin: num(d.deepsleepduration) !== undefined ? Math.round(d.deepsleepduration / 60) : undefined,
+      remMin: num(d.remsleepduration) !== undefined ? Math.round(d.remsleepduration / 60) : undefined,
+      wakeups: num(d.wakeupcount),
+    };
+    const prev = byDay.get(date);
+    if (!prev || rec.hours > prev.hours) byDay.set(date, rec);
+  }
+  return [...byDay.entries()].map(([date, sleep]) => ({ date, sleep })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Nuits mesurées par une montre ou un capteur de sommeil Withings (vide sinon). */
+export async function fetchSleep(auth: WithingsAuth, startYmd: string, endYmd: string): Promise<{ date: string; sleep: SleepRecord }[]> {
+  let lastErr: unknown;
+  for (const fields of SLEEP_FIELDS) {
+    try {
+      const series: any[] = [];
+      let offset: number | undefined;
+      for (let page = 0; page < 5; page++) {
+        const params: Record<string, string> = {
+          action: 'getsummary',
+          access_token: auth.accessToken!,
+          startdateymd: startYmd,
+          enddateymd: endYmd,
+          data_fields: fields,
+        };
+        if (offset) params.offset = String(offset);
+        const body = await post(SLEEP_V2_URL, params);
+        series.push(...(body.series ?? []));
+        if (!body.more) break;
+        offset = body.offset;
+      }
+      return parseSleepSeries(series);
+    } catch (e) {
+      // Jeton expiré : inutile de réessayer avec moins de champs
+      if (e instanceof WithingsError && e.status === 401) throw e;
+      lastErr = e;
+    }
+  }
+  throw lastErr;
 }
 
 /** Fusionne de nouvelles mesures dans la liste existante (dédoublonnage par id). */

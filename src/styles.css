@@ -846,6 +846,10 @@ textarea.input {
   margin-top: 8px;
 }
 
+.tip.warn {
+  background: var(--warning-soft);
+}
+
 details > summary {
   cursor: pointer;
   list-style: none;
@@ -1504,4 +1508,14 @@ details[open] > summary.disclosure::after {
   background: var(--accent-soft);
   border-radius: 14px;
   padding: 12px;
+}
+
+.linklike {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
 }

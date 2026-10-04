@@ -32,6 +32,7 @@ export function defaultState(): AppState {
     settings: { theme: 'auto' },
     coach: [],
     photos: [],
+    gear: {},
   };
 }
 
@@ -52,6 +53,7 @@ export function migrate(raw: unknown): AppState {
     daily: s.daily ?? {},
     coach: s.coach ?? [],
     photos: s.photos ?? [],
+    gear: s.gear ?? {},
     profile: s.profile ? upgradeProfile(s.profile) : undefined,
     version: STATE_VERSION,
   };

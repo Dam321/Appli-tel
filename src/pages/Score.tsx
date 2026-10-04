@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { navigate, type Route } from '../App';
+import { GearTeaser } from '../components/GearTeaser';
 import { Badge, Callout, Card, Meter } from '../components/ui';
 import { assess, type Action } from '../lib/assessment';
 import { insights } from '../lib/insights';
@@ -125,6 +126,8 @@ export function Score() {
       {derived.autoVolume.notes.length > 0 && (
         <Callout title="Ton programme s’est adapté">{derived.autoVolume.notes.join(' ')}</Callout>
       )}
+
+      <GearTeaser />
 
       <Card title="Prochaine prise de sang" sub={retest.date <= todayISO() ? 'Dès que possible' : `Vers le ${formatDay(retest.date, { day: 'numeric', month: 'long', year: 'numeric' })}`}>
         <p className="small" style={{ margin: 0 }}>

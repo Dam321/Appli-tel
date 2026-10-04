@@ -495,6 +495,9 @@ export function readinessScore(r: Readiness): number {
   const avg = (r.sleep + r.energy + r.soreness + r.motivation) / 4; // 1-5
   let score = ((avg - 1) / 4) * 100;
   if (r.sleepHours !== undefined && r.sleepHours < 6) score -= 10;
+  // FC nocturne au-dessus de ta moyenne : récupération incomplète
+  if (r.hrDelta !== undefined && r.hrDelta >= 8) score -= 15;
+  else if (r.hrDelta !== undefined && r.hrDelta >= 5) score -= 10;
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 

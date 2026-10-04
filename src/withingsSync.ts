@@ -1,14 +1,14 @@
 import { useCallback, useState } from 'react';
-import { ensureToken, fetchMeasures, fetchSteps, mergeMeasurements, WithingsError } from './lib/withings';
+import { ensureToken, fetchMeasures, fetchSleep, fetchSteps, mergeMeasurements, WithingsError } from './lib/withings';
 import { addDays, todayISO } from './lib/util';
-import type { AppState } from './lib/types';
+import type { AppState, SleepRecord } from './lib/types';
 import { useStore } from './store';
 
 export function isWithingsConnected(s: AppState): boolean {
   return !!s.settings.withings?.refreshToken;
 }
 
-/** Synchronise pesées + pas depuis Withings. */
+/** Synchronise pesées, pas et nuits (montre / capteur de sommeil) depuis Withings. */
 export function useWithingsSync() {
   const { state, update, toast } = useStore();
   const [busy, setBusy] = useState(false);
@@ -31,6 +31,12 @@ export function useWithingsSync() {
         } catch {
           /* activité indisponible (pas de montre/tracker) : on ignore */
         }
+        let nights: { date: string; sleep: SleepRecord }[] = [];
+        try {
+          nights = await fetchSleep(auth, addDays(todayISO(), -30), todayISO());
+        } catch {
+          /* pas d'appareil de sommeil : on ignore */
+        }
         const known = new Set(state.measurements.map((m) => m.id));
         const added = measures.filter((m) => !known.has(m.id)).length;
         update((s) => {
@@ -39,6 +45,10 @@ export function useWithingsSync() {
           for (const st of steps) {
             const prev = daily[st.date] ?? { habits: {}, meals: {} };
             daily[st.date] = { ...prev, steps: st.steps, habits: { ...prev.habits, steps: prev.habits.steps || st.steps >= 8000 } };
+          }
+          for (const n of nights) {
+            const prev = daily[n.date] ?? { habits: {}, meals: {} };
+            daily[n.date] = { ...prev, sleep: n.sleep, sleepHours: n.sleep.hours, habits: { ...prev.habits, sleep: prev.habits.sleep || n.sleep.hours >= 7.5 } };
           }
           return { ...s, measurements: merged.list, daily, settings: { ...s.settings, withings: { ...auth, lastSync: new Date().toISOString() } } };
         });

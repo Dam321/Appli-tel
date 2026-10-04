@@ -203,3 +203,46 @@ export function prescriptionText(sex: Sex, age: number): string {
     '• Créatine : la signaler (élève la créatinine)',
   ].join('\n');
 }
+
+/** Unité « normalisée » pour comparer ce qui est imprimé sur un compte-rendu (µ/u, UI/U, 10^9/L…). */
+export function normalizeUnit(u: string): string {
+  let s = u
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/μ/g, 'µ')
+    .replace(/mcg/g, 'µg')
+    .replace(/,/g, '.')
+    .replace(/²/g, '2')
+    .replace(/³/g, '3')
+    .replace(/[\^*]/g, '')
+    .replace(/^x(?=10)/, '');
+  s = s.replace(/^u(?=(g|mol|ui|u\/|iu))/, 'µ').replace(/iu/g, 'ui').replace(/ui/g, 'u');
+  if (s === 'giga/l' || s === '109/l') s = 'g/l';
+  if (s === '103/mm3') s = '103/µl';
+  return s;
+}
+
+/** Libellé d'unité de l'app (unité principale ou alternative) correspondant à l'unité imprimée. */
+export function matchUnit(m: Marker, printed: string): string | undefined {
+  const n = normalizeUnit(printed);
+  return [m.unit, ...(m.altUnits?.map((a) => a.unit) ?? [])].find((o) => normalizeUnit(o.replace(/\s*\(≈\)/, '')) === n);
+}
+
+/** Résultats lus par l'IA → valeurs et unités du formulaire de saisie (à vérifier avant d'enregistrer). */
+export function mapLabResults(results: { id: string; value: number; unit: string; canonicalValue: number }[]): { vals: Record<string, number>; units: Record<string, string> } {
+  const vals: Record<string, number> = {};
+  const units: Record<string, string> = {};
+  for (const r of results) {
+    const m = MARKER_BY_ID[r.id];
+    if (!m) continue;
+    const opt = matchUnit(m, r.unit);
+    if (opt && Number.isFinite(r.value)) {
+      vals[m.id] = r.value;
+      units[m.id] = opt;
+    } else if (Number.isFinite(r.canonicalValue)) {
+      vals[m.id] = Math.round(r.canonicalValue * 1000) / 1000;
+      units[m.id] = m.unit;
+    }
+  }
+  return { vals, units };
+}

@@ -11,6 +11,7 @@ import type { AppState, Profile } from './types';
 import { addDays, fmt, todayISO } from './util';
 import { assess } from './assessment';
 import { insights } from './insights';
+import { nightReport, nightSummary, sleepStats } from './sleep';
 
 export interface Derived {
   profile: Profile;
@@ -147,6 +148,14 @@ export function coachSummary(state: AppState, d: Derived): string {
     .filter(([day]) => day >= new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10))
     .map(([day, log]) => `${day} : ${Object.entries(log.habits).filter(([, v]) => v).map(([k]) => k).join(', ')}`);
   if (last7.length) lines.push(`Habitudes cochées (7 j) : ${last7.join(' | ')}.`);
+  const sleep = sleepStats(state.daily, todayISO());
+  if (sleep) lines.push(`Sommeil mesuré (Withings, 14 j) : ${sleep.avgHours} h en moyenne sur ${sleep.nights} nuits${sleep.avgEfficiency !== undefined ? `, efficacité ${sleep.avgEfficiency} %` : ''}.`);
+  const night = nightReport(state.daily, todayISO());
+  if (night) lines.push(`Nuit dernière : ${nightSummary(night).text}`);
+  const meals = Object.entries(state.daily)
+    .filter(([day, log]) => day >= addDays(todayISO(), -7) && log.extraMeals?.length)
+    .flatMap(([day, log]) => log.extraMeals!.map((m) => `${day} ${m.name} (${m.kcal} kcal, ${m.protein} g P${m.replaces ? `, remplace le ${m.replaces}` : ', en plus'})`));
+  if (meals.length) lines.push(`Repas hors menu (7 j) : ${meals.join(' ; ')}.`);
   const latest = trendSeries(state.measurements, 'weightKg');
   if (latest.length > 1) lines.push(`Nombre de jours de pesées : ${latest.length}.`);
   const a = assess(state, d);

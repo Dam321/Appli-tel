@@ -8,6 +8,7 @@ import { bpCategory, latestValues, restingHrCategory } from './bodyComp';
 import type { Derived } from './derived';
 import { dayScore, vo2Category } from './longevity';
 import { plannedSleepHours } from './profile';
+import { sleepStats } from './sleep';
 import { exerciseHistory, readinessScore } from './training';
 import type { AppState } from './types';
 import { addDays, daysBetween, todayISO } from './util';
@@ -186,6 +187,8 @@ export function assess(state: AppState, d: Derived, today = todayISO()): Assessm
       actions.push({ id: 'apob', pillar: 'metabolic', title: 'Optimiser ton ApoB', why: `ApoB ${apob} g/L : normal, mais au-dessus de la cible longévité (< 0,8).`, how: 'Fibres solubles, oméga-3, moins de fromage et charcuterie ; recontrôle dans 3-6 mois.', impact: 5, route: 'nutrition' });
     if ((d.blood.hba1c ?? 0) >= 5.7 || (d.blood.glucose ?? 0) >= 100)
       actions.push({ id: 'glucose', pillar: 'metabolic', title: 'Améliorer ta glycémie', why: 'Glycémie ou HbA1c au-dessus de l’optimal : signe précoce de résistance à l’insuline.', how: 'Marche 10 min après chaque repas, musculation, perte de gras abdominal, glucides complets autour de l’entraînement.', impact: 8, route: 'nutrition' });
+    if (!sys && (d.snap.age >= 30 || p.conditions.includes('hypertension') || p.familyHistory.includes('heart')))
+      actions.push({ id: 'bp_measure', pillar: 'metabolic', title: 'Mesurer ta tension', why: 'L’hypertension ne donne aucun symptôme : c’est le 1er facteur de risque cardiovasculaire évitable, et la mesure à domicile est la plus fiable.', how: 'Tensiomètre au bras validé (≈ 40 €) : 3 jours, matin et soir, puis saisis la moyenne dans Corps.', impact: 5, route: 'gear' });
     if (bpTone === 'critical' || bpTone === 'warning')
       actions.push({
         id: 'bp',
@@ -205,15 +208,17 @@ export function assess(state: AppState, d: Derived, today = todayISO()): Assessm
 
   // ——— Sommeil ———
   {
-    const planned = plannedSleepHours(p);
+    const measured = sleepStats(state.daily, today);
+    const planned = measured?.avgHours ?? plannedSleepHours(p);
+    const hoursLabel = measured ? `${planned.toFixed(1).replace('.', ',')} h mesurées en moyenne (${measured.nights} nuits)` : `${planned.toFixed(1).replace('.', ',')} h prévues par nuit`;
     const readiness = days7.map((x) => x!.readiness).filter(Boolean).map((r) => readinessScore(r!));
     const parts = [planned >= 7.5 ? 100 : planned >= 7 ? 80 : planned >= 6.5 ? 60 : planned >= 6 ? 40 : 20, ((6 - p.sleepQuality) / 5) * 100];
     const ra = avg(readiness);
     if (ra !== undefined) parts.push(ra);
     const score = clamp100(avg(parts)!);
-    pillars.push({ id: 'sleep', label: LABELS.sleep, score, detail: `${planned.toFixed(1).replace('.', ',')} h prévues par nuit${ra !== undefined ? ` · forme moyenne ${Math.round(ra)}/100` : ''}` });
+    pillars.push({ id: 'sleep', label: LABELS.sleep, score, detail: `${hoursLabel}${ra !== undefined ? ` · forme moyenne ${Math.round(ra)}/100` : ''}` });
     if (planned < 7)
-      actions.push({ id: 'sleep', pillar: 'sleep', title: 'Dormir au moins 7 h 30', why: `Tu prévois ${planned.toFixed(1).replace('.', ',')} h : le manque de sommeil réduit la perte de gras, la testostérone, la récupération et la longévité.`, how: 'Avance ton coucher de 30 min cette semaine, puis encore 30 min la suivante. Écrans coupés 1 h avant.', impact: 8, route: 'settings' });
+      actions.push({ id: 'sleep', pillar: 'sleep', title: 'Dormir au moins 7 h 30', why: `${measured ? 'Tu dors' : 'Tu prévois'} ${planned.toFixed(1).replace('.', ',')} h : le manque de sommeil réduit la perte de gras, la testostérone, la récupération et la longévité.`, how: 'Avance ton coucher de 30 min cette semaine, puis encore 30 min la suivante. Écrans coupés 1 h avant.', impact: 8, route: 'settings' });
     else if (p.sleepQuality >= 4 || (ra !== undefined && ra < 50))
       actions.push({ id: 'sleep_q', pillar: 'sleep', title: 'Améliorer la qualité de ton sommeil', why: 'Sommeil ressenti comme mauvais ou forme du matin basse.', how: 'Horaires fixes 7 j/7, chambre 18 °C et noire, zéro alcool et caféine après 14 h. Si tu ronfles : dépistage d’apnée du sommeil.', impact: 6, route: 'home' });
   }
