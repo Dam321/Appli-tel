@@ -334,8 +334,8 @@ function WorkoutLogger({ session, lighter }: { session: ProgramSession; lighter?
             {(sets[pe.exerciseId] ?? []).map((st, i) => (
               <div className="set-row" key={i}>
                 <span className="n">{i + 1}</span>
-                <input className="input" type="number" inputMode="decimal" placeholder={sug.weight !== undefined ? String(sug.weight) : 'kg'} value={st.weight ?? ''} onChange={(e) => setField(pe.exerciseId, i, { weight: e.target.value === '' ? undefined : Number(e.target.value.replace(',', '.')) })} />
-                <input className="input" type="number" inputMode="numeric" placeholder={`${sug.reps}`} value={st.reps ?? ''} onChange={(e) => setField(pe.exerciseId, i, { reps: e.target.value === '' ? undefined : Number(e.target.value) })} />
+                <NumberInput placeholder={sug.weight !== undefined ? String(sug.weight).replace('.', ',') : 'kg'} value={st.weight} onChange={(weight) => setField(pe.exerciseId, i, { weight })} />
+                <NumberInput step={1} placeholder={`${sug.reps}`} value={st.reps} onChange={(reps) => setField(pe.exerciseId, i, { reps })} />
                 <button
                   className={`done-btn ${st.done ? 'on' : ''}`}
                   aria-label="Série faite"

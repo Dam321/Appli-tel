@@ -1,4 +1,4 @@
-import { isValidElement, useEffect, useState, type ReactNode } from 'react';
+import { isValidElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from './icons';
 
 export type Tone = 'good' | 'warning' | 'serious' | 'critical' | 'accent' | 'neutral';
@@ -93,6 +93,13 @@ export function Field({ label, hint, children }: { label: ReactNode; hint?: Reac
   );
 }
 
+const formatNumber = (v: number | undefined) => (v === undefined || Number.isNaN(v) ? '' : String(v).replace('.', ','));
+
+/**
+ * Champ numérique. Le texte tapé est gardé tel quel (champ vide, « 78, »…) : on peut
+ * effacer tous les chiffres avant de retaper, même quand la valeur est obligatoire.
+ * Virgule ou point acceptés ; un pas entier (step={1}) affiche le pavé numérique sans décimales.
+ */
 export function NumberInput({
   value,
   onChange,
@@ -100,7 +107,6 @@ export function NumberInput({
   step = 'any',
   placeholder,
   min,
-  max,
 }: {
   value: number | undefined;
   onChange: (v: number | undefined) => void;
@@ -108,21 +114,47 @@ export function NumberInput({
   step?: number | 'any';
   placeholder?: string;
   min?: number;
-  max?: number;
 }) {
+  const [text, setText] = useState(() => formatNumber(value));
+  const sent = useRef<number | undefined>(value);
+  const integer = typeof step === 'number' && Number.isInteger(step);
+  const negative = min !== undefined && min < 0;
+
+  const ref = useRef<HTMLInputElement>(null);
+
+  // Valeur modifiée de l'extérieur (lecture IA, réinitialisation…) : on l'affiche,
+  // sauf pendant la saisie (le parent peut remplacer un champ vide par une valeur par défaut).
+  useEffect(() => {
+    if (value !== sent.current && document.activeElement !== ref.current) {
+      sent.current = value;
+      setText(formatNumber(value));
+    }
+  }, [value]);
+
+  const pattern = integer ? (negative ? /^-?\d*$/ : /^\d*$/) : negative ? /^-?\d*(?:[.,]\d*)?$/ : /^\d*(?:[.,]\d*)?$/;
   const input = (
     <input
+      ref={ref}
       className="input"
-      type="number"
-      inputMode="decimal"
-      step={step}
-      min={min}
-      max={max}
+      type="text"
+      inputMode={integer ? 'numeric' : 'decimal'}
+      autoComplete="off"
       placeholder={placeholder}
-      value={value ?? ''}
+      value={text}
       onChange={(e) => {
-        const v = e.target.value.replace(',', '.');
-        onChange(v === '' ? undefined : Number(v));
+        const raw = e.target.value.replace(/\s/g, '');
+        if (!pattern.test(raw)) return;
+        setText(raw);
+        const t = raw.replace(',', '.');
+        const n = t === '' || t === '-' || t === '.' || t === '-.' ? undefined : Number(t);
+        if (n !== undefined && Number.isNaN(n)) return;
+        sent.current = n;
+        onChange(n);
+      }}
+      onBlur={() => {
+        // Champ obligatoire laissé vide, « 78, »… : on affiche la valeur retenue
+        sent.current = value;
+        setText(formatNumber(value));
       }}
     />
   );
